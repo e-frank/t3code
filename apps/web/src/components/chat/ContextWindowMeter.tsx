@@ -46,9 +46,8 @@ export function ContextWindowMeter(props: {
         closeDelay={onCompact ? 150 : 0}
         render={
           <Button
-            size="icon-sm"
+            size="xs"
             variant="ghost-muted"
-            className="size-7"
             aria-label={
               usage.maxTokens !== null && usedPercentage
                 ? `Context window ${usedPercentage} used`
@@ -83,6 +82,7 @@ export function ContextWindowMeter(props: {
                 />
               </svg>
             </span>
+            <span className="tabular-nums">{formatContextWindowTokens(usage.usedTokens)}</span>
           </Button>
         }
       />
