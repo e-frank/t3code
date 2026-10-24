@@ -1,7 +1,8 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ClientSettings } from "@t3tools/contracts/settings";
 
-import completionUrl from "./assets/notification-completion.mp3";
+// Small enough to be inlined as a data: URL, which the desktop CSP's connect-src blocks for fetch.
+import completionUrl from "./assets/notification-completion.mp3?no-inline";
 import inputUrl from "./assets/notification-input.mp3";
 
 type NotificationMode = ClientSettings["notificationMode"];
