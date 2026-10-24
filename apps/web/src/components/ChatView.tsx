@@ -3805,6 +3805,15 @@ export default function ChatView(props: ChatViewProps) {
               onAddProjectScript={saveProjectScriptStable}
               onUpdateProjectScript={updateProjectScriptStable}
               onDeleteProjectScript={deleteProjectScriptStable}
+              usageLimits={{
+                providerInstanceId: activeProviderInstanceId,
+                model:
+                  composerSelectedModelSelection?.model ??
+                  activeThread.modelSelection.model ??
+                  null,
+                providers: providerStatuses as ServerProvider[],
+                sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
+              }}
             />
 
             <PullRequestThreadDialogHost
