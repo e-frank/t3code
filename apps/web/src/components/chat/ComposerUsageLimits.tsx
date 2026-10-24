@@ -21,7 +21,11 @@ function accountLabel(account: UsageLimitsReport["accounts"][number]): string {
     : driver;
 }
 
-function AccountSummary({ account }: { readonly account: UsageLimitsReport["accounts"][number] }) {
+export function AccountSummary({
+  account,
+}: {
+  readonly account: UsageLimitsReport["accounts"][number];
+}) {
   const label = accountLabel(account);
   return (
     <>
