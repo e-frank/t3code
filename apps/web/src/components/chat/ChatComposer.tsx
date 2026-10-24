@@ -29,6 +29,7 @@ import type {
   ScopedThreadRef,
   ServerProvider,
   ThreadId,
+  UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
 import {
   EnvironmentRequestInvalidError,
@@ -291,6 +292,7 @@ import { useComposerStash } from "./useComposerStash";
 import { useComposerContextImport } from "./useComposerContextImport";
 import { useComposerAttachmentIntake } from "./useComposerAttachmentIntake";
 import { ComposerControlsBar } from "./ComposerControlsBar";
+import { ComposerUsageMeter } from "./ComposerUsageMeter";
 import { useComposerCommandKey } from "./useComposerCommandKey";
 
 /** Reads and disarms a paste-as-text deadline: the shortcut applies to one paste only. */
@@ -441,6 +443,7 @@ export interface ChatComposerProps {
 
   lockedProvider: ProviderDriverKind | null;
   providerStatuses: ServerProvider[];
+  usageLimitSources: UsageLimitSourceSnapshots;
   providerCatalogKnown: boolean;
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
@@ -579,6 +582,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     interactionMode: requestedInteractionMode,
     lockedProvider,
     providerStatuses,
+    usageLimitSources,
     providerCatalogKnown,
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
@@ -3899,6 +3903,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
                   {composerAttachButton}
+                  <ComposerUsageMeter
+                    providerInstanceId={selectedInstanceId ?? null}
+                    providers={providerStatuses}
+                    sources={usageLimitSources}
+                  />
                   <ComposerFooterPrimaryActions
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
