@@ -23,6 +23,7 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
+import { ThreadUsageLimits } from "./ComposerUsageMeter";
 
 const GitActionsControl = memo(BaseGitActionsControl);
 
@@ -67,6 +68,7 @@ interface ThreadDetailsPanelProps extends Pick<
     input: NewProjectScriptInput,
   ) => Promise<ProjectScriptActionResult>;
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
+  usageLimits?: ComponentProps<typeof ThreadUsageLimits> | undefined;
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
@@ -178,6 +180,16 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
                   />
                 ) : null}
               </div>
+            </ThreadDetailsSection>
+          ) : null}
+
+          {density === "full" && props.usageLimits ? (
+            <ThreadDetailsSection
+              headingId="thread-details-usage-limits-heading"
+              title="Usage limits"
+              showHeading={false}
+            >
+              <ThreadUsageLimits {...props.usageLimits} />
             </ThreadDetailsSection>
           ) : null}
 
