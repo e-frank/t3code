@@ -775,6 +775,55 @@ describe("PiAdapterV2", () => {
       }).pipe(Effect.scoped, Effect.provide(layerTest)),
   );
 
+  it.effect("rolls back a persisted thread in a freshly opened Pi process", () =>
+    Effect.gen(function* () {
+      const original = yield* openRuntime(yield* makeFakePi);
+      const providerThread = yield* original.runtime.ensureThread({
+        threadId: THREAD_ID,
+        modelSelection: modelSelection("default"),
+        runtimePolicy,
+      });
+
+      const fake = yield* makeFakePi;
+      const { runtime } = yield* openRuntime(fake);
+      fake.queueState({});
+      fake.queueState({ sessionFile: "/fake/rolled-back-session.jsonl" });
+      const result = yield* runtime.rollbackThread({
+        providerThread,
+        target: {
+          type: "thread_start",
+          checkpointId: CheckpointId.make("checkpoint-start"),
+          appRunOrdinal: 0,
+        },
+        providerThreadTurns: [
+          {
+            id: ProviderTurnId.make("previous-turn"),
+            providerThreadId: providerThread.id,
+            nodeId: NodeId.make("previous-node"),
+            runAttemptId: null,
+            nativeTurnRef: { driver: PI_PROVIDER, nativeId: "user-1", strength: "strong" },
+            ordinal: 1,
+            status: "completed",
+            startedAt: providerThread.createdAt,
+            completedAt: providerThread.createdAt,
+          },
+        ],
+      });
+
+      const requests = fake.allRequests();
+      assert.equal(
+        requests.find((request) => request["type"] === "switch_session")?.["sessionPath"],
+        FAKE_SESSION_FILE,
+      );
+      assert.equal(requests.find((request) => request["type"] === "fork")?.["entryId"], "user-1");
+      assert.equal(result.providerThread.id, providerThread.id);
+      assert.equal(
+        result.providerThread.nativeThreadRef?.nativeId,
+        "/fake/rolled-back-session.jsonl",
+      );
+    }).pipe(Effect.scoped, Effect.provide(layerTest)),
+  );
+
   it.effect.each([false, true])(
     "retains native wake ownership after a rejected joining prompt, compaction aborted=%s",
     (aborted) =>
