@@ -340,14 +340,28 @@ function CompactWindow(props: {
   const used = window ? usedPercent(window) : null;
   const tone = used === null ? null : usageTone(used);
   const share = window ? elapsedShare(window, now) : null;
+  const resetsAt = new Date(window?.resetsAt ?? Number.NaN);
+  const time = `${pad2(resetsAt.getHours())}:${pad2(resetsAt.getMinutes())}`;
+  // Resets are at most a week out, so the weekday is enough; a reset later today needs only its time.
+  const reset = Number.isNaN(resetsAt.getTime())
+    ? null
+    : resetsAt.toDateString() === new Date(now).toDateString()
+      ? time
+      : `${weekdayFormatter.format(resetsAt)} ${time}`;
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <div className="flex items-baseline justify-between gap-1 text-2xs tabular-nums">
-        <span className="text-muted-foreground">{title}</span>
+        <span className="shrink-0 text-muted-foreground">{title}</span>
+        {reset === null ? null : (
+          <span className="min-w-0 truncate text-muted-foreground">
+            <span className="sr-only">Resets </span>
+            {reset}
+          </span>
+        )}
         {used === null ? (
-          <span className="text-muted-foreground">-</span>
+          <span className="shrink-0 text-muted-foreground">-</span>
         ) : (
-          <span className={cn("font-medium", tone?.text)}>{used}%</span>
+          <span className={cn("shrink-0 font-medium", tone?.text)}>{used}%</span>
         )}
       </div>
       <div className="relative h-1 rounded-full bg-input">
