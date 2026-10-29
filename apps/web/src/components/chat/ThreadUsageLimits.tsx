@@ -9,7 +9,6 @@ import {
   elapsedShare,
   formatDuration,
   limitsNotice,
-  remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { useState } from "react";
 
@@ -30,16 +29,16 @@ type WindowKind = ServerProviderUsageWindow["kind"];
 
 const KIND_ORDER: ReadonlyArray<WindowKind> = ["session", "weekly", "monthly", "other"];
 
-const usedPercent = (window: ServerProviderUsageWindow) => 100 - remainingPercent(window);
+const usedPercent = (window: ServerProviderUsageWindow) =>
+  Math.round(Math.max(0, Math.min(100, window.usedPercent)));
 
 // "5h 0m" reads as noise for a window length; drop the empty trailing unit.
 const shortDuration = (ms: number) => formatDuration(ms).replace(/ 0[hm]$/, "");
 
-// Upstream's ThreadDetailsUsage thresholds (10% and 20% left); green below them is the fork's.
 function usageTone(used: number): { text: string; bar: string } {
-  if (used >= 90) return { text: "text-destructive-foreground", bar: "bg-destructive" };
-  if (used >= 80) return { text: "text-warning-foreground", bar: "bg-warning" };
-  return { text: "text-success-foreground", bar: "bg-success" };
+  if (used < 75) return { text: "text-success-foreground", bar: "bg-success" };
+  if (used < 90) return { text: "text-warning-foreground", bar: "bg-warning" };
+  return { text: "text-destructive-foreground", bar: "bg-destructive" };
 }
 
 const DAY_MS = 86_400_000;
