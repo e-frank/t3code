@@ -9,6 +9,7 @@ import {
   elapsedShare,
   formatDuration,
   limitsNotice,
+  remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { useState } from "react";
 
@@ -35,10 +36,12 @@ const usedPercent = (window: ServerProviderUsageWindow) =>
 // "5h 0m" reads as noise for a window length; drop the empty trailing unit.
 const shortDuration = (ms: number) => formatDuration(ms).replace(/ 0[hm]$/, "");
 
-function usageTone(used: number): { text: string; bar: string } {
-  if (used < 75) return { text: "text-success-foreground", bar: "bg-success" };
-  if (used < 90) return { text: "text-warning-foreground", bar: "bg-warning" };
-  return { text: "text-destructive-foreground", bar: "bg-destructive" };
+// Upstream's ThreadDetailsUsage thresholds: warning at 20% left, error at 10% left.
+function usageTone(window: ServerProviderUsageWindow): { text: string; bar: string } {
+  const left = remainingPercent(window);
+  if (left <= 10) return { text: "text-destructive-foreground", bar: "bg-destructive" };
+  if (left <= 20) return { text: "text-warning-foreground", bar: "bg-warning" };
+  return { text: "text-success-foreground", bar: "bg-success" };
 }
 
 const DAY_MS = 86_400_000;
@@ -147,7 +150,7 @@ function WindowCell(props: {
     );
   }
   const used = usedPercent(window);
-  const tone = usageTone(used);
+  const tone = usageTone(window);
   const share = elapsedShare(window, now);
   const resetsAt = window.resetsAt === undefined ? null : Date.parse(window.resetsAt);
   return (
@@ -341,7 +344,7 @@ function CompactWindow(props: {
 }) {
   const { window, title, now } = props;
   const used = window ? usedPercent(window) : null;
-  const tone = used === null ? null : usageTone(used);
+  const tone = window ? usageTone(window) : null;
   const share = window ? elapsedShare(window, now) : null;
   const resetsAt = new Date(window?.resetsAt ?? Number.NaN);
   const time = `${pad2(resetsAt.getHours())}:${pad2(resetsAt.getMinutes())}`;
