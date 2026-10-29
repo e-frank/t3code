@@ -122,15 +122,10 @@ jobs:
           path: assets
           merge-multiple: true
       # x64 only, so the per-arch Windows manifest needs no merge (release.yml merges x64 and arm64),
-      # only its channel name back. electron-builder names the channel after the version's prerelease
-      # part (`ef`), while the app always reads `latest`. builder-debug.yml is a config dump, not a feed.
+      # only its plain name back. builder-debug.yml is a config dump, not a feed.
       - run: |
-          shopt -s nullglob
           rm -f assets/builder-debug.yml
-          for manifest in assets/*-win-x64.yml; do mv "$manifest" "${manifest%-win-x64.yml}.yml"; done
-          for manifest in assets/ef.yml assets/ef-*.yml; do
-            mv "$manifest" "assets/latest${manifest#assets/ef}"
-          done
+          mv assets/latest-win-x64.yml assets/latest.yml
           ls -la assets
           test -f assets/latest.yml && test -f assets/latest-linux.yml
       - env:
