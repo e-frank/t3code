@@ -12,6 +12,7 @@ import {
 } from "@t3tools/shared/usageLimits";
 import { useState } from "react";
 
+import { useNowMinute } from "~/hooks/useNowMinute";
 import { cn } from "~/lib/utils";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -265,8 +266,7 @@ function ProviderGroup(props: {
 }
 
 /**
- * Usage across all providers. Accounts are only collected while open, and `now` is the moment it
- * was opened, so nothing ticks while closed.
+ * Usage across all providers. Accounts are only collected while open.
  */
 function UsageLimitsDialog(props: {
   readonly open: boolean;
@@ -425,8 +425,8 @@ export function ThreadDetailsForkUsage(props: {
 
 /**
  * Compact usage for the thread details panel: only the selected model's provider, narrowed to its
- * account when the model pins one (`team/…`). Clicking it opens every provider's usage. Pace is
- * measured at the newest reading, so the panel only changes when provider or hub data does.
+ * account when the model pins one (`team/…`). Clicking it opens every provider's usage. Resets and
+ * pace follow the same minute clock as upstream's `ThreadDetailsUsage`.
  */
 function ThreadUsageLimits(props: {
   readonly providerInstanceId: ProviderInstanceId | null;
@@ -435,16 +435,11 @@ function ThreadUsageLimits(props: {
   readonly sources: UsageLimitSourceSnapshots;
 }) {
   const { providerInstanceId, model, providers, sources } = props;
-  const [openedAt, setOpenedAt] = useState<number | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const nowMinute = useNowMinute();
+  const now = Date.parse(`${nowMinute}:00Z`);
   const current = currentUsage(providers, providerInstanceId, model);
   if (current === null) return null;
-  const now = Math.max(
-    0,
-    ...providers.map((provider) => Date.parse(provider.usageLimits?.checkedAt ?? "") || 0),
-    ...sources.flatMap((source) =>
-      source.accounts.map((account) => Date.parse(account.usageLimits.checkedAt) || 0),
-    ),
-  );
   const group = collectAllUsageAccounts(null, providers, sources, now).filter(
     (account) => String(account.driver) === current.driver,
   );
@@ -454,15 +449,15 @@ function ThreadUsageLimits(props: {
   const driver = accounts[0]!.driver;
   const label = providerClients.get(driver)?.label ?? String(driver);
   const columns = groupColumns(accounts).slice(0, 2);
-  const openDialog = () => setOpenedAt(Date.now());
+  const openDialog = () => setDialogOpen(true);
 
   return (
     <>
       {/* A sibling: React events bubble through portals, so inside it would reopen on every click. */}
       <UsageLimitsDialog
-        open={openedAt !== null}
-        onOpenChange={(open) => setOpenedAt(open ? Date.now() : null)}
-        now={openedAt ?? 0}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        now={now}
         providerInstanceId={providerInstanceId}
         providers={providers}
         sources={sources}
