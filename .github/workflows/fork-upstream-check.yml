@@ -1,0 +1,31 @@
+name: Fork upstream check
+
+# Opens an issue when pingdotgg/t3code publishes a stable release the fork has not been
+# rebased onto yet (no v<stable>-ef.* tag here).
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          stable=$(gh release view --repo pingdotgg/t3code --json tagName -q .tagName)
+          if gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$stable-ef." -q '.[].ref' | grep -q .; then
+            echo "Fork already built on $stable"; exit 0
+          fi
+          title="Rebase custom onto upstream $stable"
+          if gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title \"$title\"" --json number -q '.[].number' | grep -q .; then
+            echo "Issue already open"; exit 0
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body \
+            "Upstream released $stable. Rebase \`custom\` onto it, run typecheck and tests, then tag \`$stable-ef.1\`."
