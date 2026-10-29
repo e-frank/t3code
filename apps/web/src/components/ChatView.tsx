@@ -3902,6 +3902,10 @@ export default function ChatView(props: ChatViewProps) {
                   onDeleteProjectScript={deleteProjectScriptStable}
                   usage={{
                     providerInstanceId: activeProviderInstanceId,
+                    model:
+                      composerSelectedModelSelection?.model ??
+                      activeThread.modelSelection.model ??
+                      null,
                     providers: providerStatuses,
                     sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                     contextWindow: activeContextWindow,
