@@ -1,11 +1,13 @@
 name: Fork release
 
 # Builds the personal fork (branch `custom`, rebased onto an upstream stable tag) for the
-# fleet: Linux x64 AppImage and Windows x64 installer, published as a private release.
+# fleet: Linux x64 AppImage and Windows x64 installer, published as a release here and in the
+# public erifrank/t3code-releases, which the app's updater follows (it cannot read private releases).
 # Tag the rebased commit as v<upstream>-ef.<n>, for example v0.1.3-ef.1.
 # Repo variables: CLERK_PUBLISHABLE_KEY, CLERK_JWT_TEMPLATE, CLERK_CLI_OAUTH_CLIENT_ID,
 # RELAY_URL (T3 Connect, public values from the official build) and
-# T3CODE_DESKTOP_UPDATE_REPOSITORY=none (no update feed: the app cannot read private releases).
+# T3CODE_DESKTOP_UPDATE_REPOSITORY=erifrank/t3code-releases (the update feed).
+# Secret RELEASES_TOKEN: fine-grained token, Contents read and write on erifrank/t3code-releases.
 
 on:
   push:
@@ -119,9 +121,25 @@ jobs:
           pattern: "{desktop,cli}-*"
           path: assets
           merge-multiple: true
+      # x64 only, so the per-arch Windows manifest needs no merge (release.yml merges x64 and arm64),
+      # only its channel name back. electron-builder names the channel after the version's prerelease
+      # part (`ef`), while the app always reads `latest`. builder-debug.yml is a config dump, not a feed.
+      - run: |
+          shopt -s nullglob
+          rm -f assets/builder-debug.yml
+          for manifest in assets/*-win-x64.yml; do mv "$manifest" "${manifest%-win-x64.yml}.yml"; done
+          for manifest in assets/ef.yml assets/ef-*.yml; do
+            mv "$manifest" "assets/latest${manifest#assets/ef}"
+          done
+          ls -la assets
+          test -f assets/latest.yml && test -f assets/latest-linux.yml
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -la assets
           gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" --notes "Fork build of ${GITHUB_REF_NAME%-ef.*} with the custom patches." --latest
+      - env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" assets/* --repo erifrank/t3code-releases \
+            --title "$GITHUB_REF_NAME" --notes "Fork build of ${GITHUB_REF_NAME%-ef.*}." --latest
