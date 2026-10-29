@@ -33,7 +33,6 @@ import type {
   ScopedThreadRef,
   ServerProvider,
   ThreadId,
-  UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
 import {
   EnvironmentRequestInvalidError,
@@ -278,7 +277,6 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
-import { ComposerUsageMeter } from "./ComposerUsageMeter";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -421,7 +419,6 @@ export interface ChatComposerProps {
 
   lockedProvider: ProviderDriverKind | null;
   providerStatuses: ServerProvider[];
-  usageLimitSources: UsageLimitSourceSnapshots;
   providerCatalogKnown: boolean;
   activeProjectDefaultModelSelection: ModelSelection | null | undefined;
   activeThreadModelSelection: ModelSelection | null | undefined;
@@ -547,7 +544,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     interactionMode: requestedInteractionMode,
     lockedProvider,
     providerStatuses,
-    usageLimitSources,
     providerCatalogKnown,
     activeProjectDefaultModelSelection,
     activeThreadModelSelection,
@@ -3450,11 +3446,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   >
                     {composerControls}
                   </div>
-                  <ComposerUsageMeter
-                    providerInstanceId={selectedInstanceId ?? null}
-                    providers={providerStatuses}
-                    sources={usageLimitSources}
-                  />
                   <ComposerFooterPrimaryActions
                     compact={isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}

@@ -10,14 +10,12 @@ import {
   formatDuration,
   limitsNotice,
 } from "@t3tools/shared/usageLimits";
-import { GaugeIcon } from "lucide-react";
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { accountLabel } from "./ComposerUsageLimits";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
@@ -111,13 +109,19 @@ function AccountName(props: { readonly name: string }) {
   );
 }
 
-/** One column per window kind any account in the group reports, headed by its length ("5h"). */
+// Always laid out, so weekly sits in the same column for accounts without a session window.
+const FIXED_KINDS: ReadonlySet<WindowKind> = new Set(["session", "weekly"]);
+
+/**
+ * One column per window kind any account in the group reports, headed by its length ("5h"). The
+ * fixed kinds stay as empty columns (`title: null`) when no account reports them.
+ */
 function groupColumns(accounts: readonly UsageAccount[]) {
-  return KIND_ORDER.flatMap((kind) => {
+  return KIND_ORDER.flatMap((kind): { kind: WindowKind; title: string | null }[] => {
     const sample = accounts
       .flatMap((account) => account.limits.windows)
       .find((window) => window.kind === kind);
-    if (!sample) return [];
+    if (!sample) return FIXED_KINDS.has(kind) ? [{ kind, title: null }] : [];
     const title = sample.windowDurationMins
       ? shortDuration(sample.windowDurationMins * 60_000)
       : sample.label;
@@ -133,8 +137,8 @@ function WindowCell(props: {
   if (!window) {
     return (
       <div className="flex flex-col gap-1.5">
-        <span className="text-muted-foreground text-xs">— unavailable</span>
-        <div className="h-1.5 rounded-full bg-muted" />
+        <span className="text-muted-foreground text-xs">unavailable</span>
+        <div className="h-1.5 rounded-full bg-input" />
       </div>
     );
   }
@@ -155,7 +159,7 @@ function WindowCell(props: {
       <div
         role="img"
         aria-label={`${window.label}: ${used}% used`}
-        className="relative h-1.5 rounded-full bg-muted"
+        className="relative h-1.5 rounded-full bg-input"
       >
         {used > 0 ? (
           <div
@@ -237,13 +241,17 @@ function ProviderGroup(props: {
                   {notice}
                 </span>
               ) : (
-                columns.map((column) => (
-                  <WindowCell
-                    key={column.kind}
-                    window={account.limits.windows.find((window) => window.kind === column.kind)}
-                    now={now}
-                  />
-                ))
+                columns.map((column) =>
+                  column.title === null ? (
+                    <div key={column.kind} />
+                  ) : (
+                    <WindowCell
+                      key={column.kind}
+                      window={account.limits.windows.find((window) => window.kind === column.kind)}
+                      now={now}
+                    />
+                  ),
+                )
               )}
             </div>
           );
@@ -254,56 +262,46 @@ function ProviderGroup(props: {
 }
 
 /**
- * Usage across providers behind an icon, so the composer stays quiet. Accounts are only
- * collected while the dialog is open, and `now` is taken on open, so nothing ticks while closed.
+ * Usage across all providers. Accounts are only collected while open, and `now` is the moment it
+ * was opened, so nothing ticks while closed.
  */
-export function ComposerUsageMeter(props: {
+function UsageLimitsDialog(props: {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly now: number;
   readonly providerInstanceId: ProviderInstanceId | null;
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
 }) {
-  const { providerInstanceId, providers, sources } = props;
-  const [open, setOpen] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
-  const accounts = open ? collectAllUsageAccounts(providerInstanceId, providers, sources, now) : [];
+  const { open, now } = props;
+  const accounts = open
+    ? collectAllUsageAccounts(props.providerInstanceId, props.providers, props.sources, now)
+    : [];
   const groups = new Map<ServerProvider["driver"], UsageAccount[]>();
   for (const account of accounts) {
     groups.set(account.driver, [...(groups.get(account.driver) ?? []), account]);
   }
 
   return (
-    <>
-      <Button
-        size="xs"
-        variant="ghost-muted"
-        aria-label="Usage limits"
-        onClick={() => {
-          setNow(Date.now());
-          setOpen(true);
-        }}
-      >
-        <GaugeIcon aria-hidden="true" className="text-muted-foreground" />
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogPopup className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Usage limits</DialogTitle>
-          </DialogHeader>
-          <DialogPanel>
-            <div className="flex flex-col gap-6 pb-2">
-              {groups.size === 0 ? (
-                <span className="text-muted-foreground text-sm">
-                  No provider reports usage limits.
-                </span>
-              ) : null}
-              {[...groups.values()].map((group) => (
-                <ProviderGroup key={group[0]!.driver} accounts={group} now={now} />
-              ))}
-            </div>
-          </DialogPanel>
-        </DialogPopup>
-      </Dialog>
-    </>
+    <Dialog open={open} onOpenChange={props.onOpenChange}>
+      <DialogPopup className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Usage limits</DialogTitle>
+        </DialogHeader>
+        <DialogPanel>
+          <div className="flex flex-col gap-6 pb-2">
+            {groups.size === 0 ? (
+              <span className="text-muted-foreground text-sm">
+                No provider reports usage limits.
+              </span>
+            ) : null}
+            {[...groups.values()].map((group) => (
+              <ProviderGroup key={group[0]!.driver} accounts={group} now={now} />
+            ))}
+          </div>
+        </DialogPanel>
+      </DialogPopup>
+    </Dialog>
   );
 }
 
@@ -347,12 +345,12 @@ function CompactWindow(props: {
       <div className="flex items-baseline justify-between gap-1 text-2xs tabular-nums">
         <span className="text-muted-foreground">{title}</span>
         {used === null ? (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-muted-foreground">-</span>
         ) : (
           <span className={cn("font-medium", tone?.text)}>{used}%</span>
         )}
       </div>
-      <div className="relative h-1 rounded-full bg-muted">
+      <div className="relative h-1 rounded-full bg-input">
         {used ? (
           <div
             className={cn("absolute inset-y-0 left-0 rounded-full", tone?.bar)}
@@ -372,9 +370,9 @@ function CompactWindow(props: {
 }
 
 /**
- * Compact usage for the thread details panel: every provider's accounts, with the one the
- * selected model draws on marked. Pace is measured at the newest reading rather than the wall
- * clock, so the panel only changes when provider or hub data does.
+ * Compact usage for the thread details panel: only the selected model's provider, narrowed to its
+ * account when the model pins one (`team/…`). Clicking it opens every provider's usage. Pace is
+ * measured at the newest reading, so the panel only changes when provider or hub data does.
  */
 export function ThreadUsageLimits(props: {
   readonly providerInstanceId: ProviderInstanceId | null;
@@ -383,6 +381,9 @@ export function ThreadUsageLimits(props: {
   readonly sources: UsageLimitSourceSnapshots;
 }) {
   const { providerInstanceId, model, providers, sources } = props;
+  const [openedAt, setOpenedAt] = useState<number | null>(null);
+  const current = currentUsage(providers, providerInstanceId, model);
+  if (current === null) return null;
   const now = Math.max(
     0,
     ...providers.map((provider) => Date.parse(provider.usageLimits?.checkedAt ?? "") || 0),
@@ -390,76 +391,79 @@ export function ThreadUsageLimits(props: {
       source.accounts.map((account) => Date.parse(account.usageLimits.checkedAt) || 0),
     ),
   );
-  const accounts = collectAllUsageAccounts(null, providers, sources, now);
+  const group = collectAllUsageAccounts(null, providers, sources, now).filter(
+    (account) => String(account.driver) === current.driver,
+  );
+  const pinned = group.filter((account) => accountName(account) === current.account);
+  const accounts = pinned.length > 0 ? pinned : group;
   if (accounts.length === 0) return null;
-  const current = currentUsage(providers, providerInstanceId, model);
-  const groups = new Map<ServerProvider["driver"], UsageAccount[]>();
-  for (const account of accounts) {
-    groups.set(account.driver, [...(groups.get(account.driver) ?? []), account]);
-  }
+  const driver = accounts[0]!.driver;
+  const label = providerClients.get(driver)?.label ?? String(driver);
+  const columns = groupColumns(accounts).slice(0, 2);
+  const openDialog = () => setOpenedAt(Date.now());
 
   return (
-    <div className="flex flex-col gap-3 px-1.5">
-      {[...groups.values()].map((group) => {
-        const driver = group[0]!.driver;
-        const label = providerClients.get(driver)?.label ?? String(driver);
-        const columns = groupColumns(group).slice(0, 2);
-        const isCurrentDriver = current?.driver === String(driver);
-        const markedAccount =
-          isCurrentDriver && current.account !== null
-            ? group.find((account) => accountName(account) === current.account)
-            : undefined;
-        return (
-          <div key={driver} className="flex flex-col gap-2">
-            <div className="flex items-center gap-1.5">
-              <ProviderInstanceIcon
-                driverKind={driver}
-                displayName={label}
-                iconClassName="size-3.5"
-              />
-              <span className="font-medium text-xs">{label}</span>
-              {isCurrentDriver && !markedAccount ? (
-                <Badge variant="info" size="sm">
-                  active
-                </Badge>
-              ) : null}
-            </div>
-            {group.map((account) => {
-              const notice = limitsNotice(account.limits);
-              return (
-                <div key={account.id} className="flex min-w-0 flex-col gap-1 ps-5">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-muted-foreground text-xs">
-                      <AccountName name={accountName(account)} />
-                    </span>
-                    {account === markedAccount ? (
-                      <Badge variant="info" size="sm">
-                        active
-                      </Badge>
-                    ) : null}
-                  </div>
-                  {notice ? (
-                    <span className="text-2xs text-muted-foreground">{notice}</span>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3">
-                      {columns.map((column) => (
-                        <CompactWindow
-                          key={column.kind}
-                          title={column.title}
-                          window={account.limits.windows.find(
-                            (window) => window.kind === column.kind,
-                          )}
-                          now={now}
-                        />
-                      ))}
-                    </div>
+    <>
+      {/* A sibling: React events bubble through portals, so inside it would reopen on every click. */}
+      <UsageLimitsDialog
+        open={openedAt !== null}
+        onOpenChange={(open) => setOpenedAt(open ? Date.now() : null)}
+        now={openedAt ?? 0}
+        providerInstanceId={providerInstanceId}
+        providers={providers}
+        sources={sources}
+      />
+      {/* A div, not a button: account names can hold their own reveal button. */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="Show usage limits for all providers"
+        onClick={openDialog}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          openDialog();
+        }}
+        className="flex cursor-pointer flex-col gap-3 rounded-md px-1.5 py-1 outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      >
+        {accounts.map((account) => {
+          const notice = limitsNotice(account.limits);
+          return (
+            <div key={account.id} className="flex min-w-0 flex-col gap-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <ProviderInstanceIcon
+                  driverKind={driver}
+                  displayName={label}
+                  iconClassName="size-3.5"
+                />
+                <span className="truncate font-medium text-xs">
+                  <AccountName name={accountName(account)} />
+                </span>
+              </div>
+              {notice ? (
+                <span className="text-2xs text-muted-foreground">{notice}</span>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {columns.map((column) =>
+                    column.title === null ? (
+                      <div key={column.kind} />
+                    ) : (
+                      <CompactWindow
+                        key={column.kind}
+                        title={column.title}
+                        window={account.limits.windows.find(
+                          (window) => window.kind === column.kind,
+                        )}
+                        now={now}
+                      />
+                    ),
                   )}
                 </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }

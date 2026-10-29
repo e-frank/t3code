@@ -23,7 +23,9 @@ import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import { ThreadAutomationsPanel } from "./ThreadAutomationsPanel";
 import { ThreadRelationshipsPanel } from "./ThreadRelationshipsControl";
 import { ThreadServersPanel } from "./ThreadServersPanel";
-import { ThreadUsageLimits } from "./ComposerUsageMeter";
+import { ThreadUsageLimits } from "./ThreadUsageLimits";
+import { ThreadContextWindow } from "./ThreadContextWindow";
+import type { ContextWindowSnapshot } from "~/lib/contextWindow";
 
 const GitActionsControl = memo(BaseGitActionsControl);
 
@@ -69,6 +71,7 @@ interface ThreadDetailsPanelProps extends Pick<
   ) => Promise<ProjectScriptActionResult>;
   onDeleteProjectScript: (scriptId: string) => Promise<ProjectScriptActionResult>;
   usageLimits?: ComponentProps<typeof ThreadUsageLimits> | undefined;
+  contextWindow?: ContextWindowSnapshot | null | undefined;
 }
 
 export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
@@ -190,6 +193,16 @@ export function ThreadDetailsPanel(props: ThreadDetailsPanelProps) {
               showHeading={false}
             >
               <ThreadUsageLimits {...props.usageLimits} />
+            </ThreadDetailsSection>
+          ) : null}
+
+          {density === "full" && props.contextWindow ? (
+            <ThreadDetailsSection
+              headingId="thread-details-context-window-heading"
+              title="Context window"
+              showHeading={false}
+            >
+              <ThreadContextWindow usage={props.contextWindow} />
             </ThreadDetailsSection>
           ) : null}
 

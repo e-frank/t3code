@@ -3548,9 +3548,6 @@ export default function ChatView(props: ChatViewProps) {
                               interactionMode={interactionMode}
                               lockedProvider={modelPickerLockedProvider}
                               providerStatuses={providerStatuses as ServerProvider[]}
-                              usageLimitSources={
-                                serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES
-                              }
                               providerCatalogKnown={serverConfig !== null}
                               activeProjectDefaultModelSelection={
                                 activeProjectDefaultModelSelection
@@ -3782,6 +3779,7 @@ export default function ChatView(props: ChatViewProps) {
                 providers: providerStatuses as ServerProvider[],
                 sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
               }}
+              contextWindow={activeContextWindow}
             />
 
             <PullRequestThreadDialogHost
