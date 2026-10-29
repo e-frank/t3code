@@ -14,8 +14,6 @@ import {
 import { useState } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
-import { usePrimarySettings } from "~/hooks/useSettings";
-import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { cn } from "~/lib/utils";
 import { providerClients } from "../settings/providerDriverMeta";
 import { RedactedSensitiveText } from "../settings/RedactedSensitiveText";
@@ -44,11 +42,21 @@ function usageTone(used: number): { text: string; bar: string } {
   return { text: "text-success-foreground", bar: "bg-success" };
 }
 
-function useResetLabel(window: ServerProviderUsageWindow | undefined, now: number): string | null {
-  const timestampFormat = usePrimarySettings((settings) => settings.timestampFormat);
-  const resetsAt = window?.resetsAt;
-  if (resetsAt === undefined || !(Date.parse(resetsAt) > now)) return null;
-  return formatUpcomingTimestamp(resetsAt, timestampFormat, now);
+const DAY_MS = 86_400_000;
+
+const weekdayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+/**
+ * Fixed European style, "Sat 23:20" or "Thu 29.10. 09:00": the host locale can be en-US even on a
+ * German setup, which would give AM/PM and month-first dates. The date is added once the weekday
+ * alone is ambiguous.
+ */
+function resetLabel(resetsAt: number, now: number): string {
+  const date = new Date(resetsAt);
+  const day =
+    resetsAt - now >= DAY_MS ? ` ${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.` : "";
+  return `${weekdayFormatter.format(date)}${day} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
 /**
@@ -131,7 +139,6 @@ function WindowCell(props: {
   readonly now: number;
 }) {
   const { window, now } = props;
-  const reset = useResetLabel(window, now);
   if (!window) {
     return (
       <div className="flex flex-col gap-1.5">
@@ -143,13 +150,14 @@ function WindowCell(props: {
   const used = usedPercent(window);
   const tone = usageTone(used);
   const share = elapsedShare(window, now);
+  const resetsAt = window.resetsAt === undefined ? null : Date.parse(window.resetsAt);
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="flex min-w-0 items-baseline gap-2">
         <span className={cn("font-semibold text-sm tabular-nums", tone.text)}>{used}%</span>
-        {reset === null ? null : (
+        {resetsAt === null || Number.isNaN(resetsAt) ? null : (
           <span className="truncate text-muted-foreground text-xs tabular-nums">
-            {formatDuration(Date.parse(window.resetsAt ?? "") - now)} → {reset}
+            {formatDuration(resetsAt - now)} → {resetLabel(resetsAt, now)}
           </span>
         )}
       </div>
@@ -336,7 +344,14 @@ function CompactWindow(props: {
   const used = window ? usedPercent(window) : null;
   const tone = used === null ? null : usageTone(used);
   const share = window ? elapsedShare(window, now) : null;
-  const reset = useResetLabel(window, now);
+  const resetsAt = new Date(window?.resetsAt ?? Number.NaN);
+  const time = `${pad2(resetsAt.getHours())}:${pad2(resetsAt.getMinutes())}`;
+  // Resets are at most a week out, so the weekday is enough; a reset later today needs only its time.
+  const reset = Number.isNaN(resetsAt.getTime())
+    ? null
+    : resetsAt.toDateString() === new Date(now).toDateString()
+      ? time
+      : `${weekdayFormatter.format(resetsAt)} ${time}`;
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <div className="flex items-baseline justify-between gap-1 text-2xs tabular-nums">
