@@ -3,8 +3,9 @@ name: Fork release
 # Builds the personal fork (branch `custom`, rebased onto an upstream stable tag) for the
 # fleet: Linux x64 AppImage, Windows x64 installer and macOS arm64 DMG, published as a release
 # here and in the public erifrank/t3code-releases, which the app's updater follows (it cannot read
-# private releases). The macOS build is unsigned and has no update feed (Squirrel.Mac only
-# installs signed updates); install and update it from the release with gh.
+# private releases). The macOS build is signed with a self-signed certificate (secrets
+# MAC_SELF_SIGN_P12, MAC_SELF_SIGN_PASSWORD): not notarized, but every release keeps the same
+# signature identity, which Squirrel.Mac requires to install an update.
 # Tag the rebased commit as v<upstream>-ef.<n>, for example v0.1.3-ef.1.
 # Repo variables: CLERK_PUBLISHABLE_KEY, CLERK_JWT_TEMPLATE, CLERK_CLI_OAUTH_CLIENT_ID,
 # RELAY_URL (T3 Connect, public values from the official build) and
@@ -117,6 +118,9 @@ jobs:
     name: Desktop macOS arm64
     needs: build_bundle
     uses: ./.github/workflows/release-desktop.yml
+    secrets:
+      MAC_SELF_SIGN_P12: ${{ secrets.MAC_SELF_SIGN_P12 }}
+      MAC_SELF_SIGN_PASSWORD: ${{ secrets.MAC_SELF_SIGN_PASSWORD }}
     with:
       version: ${{ needs.build_bundle.outputs.version }}
       ref: ${{ github.sha }}
@@ -151,7 +155,7 @@ jobs:
           rm -f assets/builder-debug.yml
           mv assets/latest-win-x64.yml assets/latest.yml
           ls -la assets
-          test -f assets/latest.yml && test -f assets/latest-linux.yml
+          test -f assets/latest.yml && test -f assets/latest-linux.yml && test -f assets/latest-mac.yml
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
