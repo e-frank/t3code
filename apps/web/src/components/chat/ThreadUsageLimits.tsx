@@ -21,7 +21,7 @@ import { Badge } from "../ui/badge";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { accountLabel } from "./ComposerUsageLimits";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { ThreadContextWindow } from "./ThreadContextWindow";
+import { ANTHROPIC_PROMPT_CACHE_TTL_MS, ThreadContextWindow } from "./ThreadContextWindow";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import type { ContextWindowSnapshot } from "~/lib/contextWindow";
 
@@ -401,6 +401,14 @@ export function ThreadDetailsForkUsage(props: {
   readonly contextWindow: ContextWindowSnapshot | null;
 }) {
   const { contextWindow, ...limits } = props;
+  // Claude caches for a fixed hour; Codex's cache lifetime varies, so it shows time since refresh.
+  const driver = currentUsage(limits.providers, limits.providerInstanceId, limits.model)?.driver;
+  const cache =
+    driver === "claudeAgent"
+      ? { ttlMs: ANTHROPIC_PROMPT_CACHE_TTL_MS }
+      : driver === "codex"
+        ? { ttlMs: null }
+        : undefined;
   return (
     <>
       <ThreadDetailsSection
@@ -419,7 +427,7 @@ export function ThreadDetailsForkUsage(props: {
           title="Context window"
           showHeading={false}
         >
-          <ThreadContextWindow usage={contextWindow} />
+          <ThreadContextWindow usage={contextWindow} cache={cache} />
         </ThreadDetailsSection>
       ) : null}
     </>
