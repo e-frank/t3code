@@ -35,6 +35,11 @@ on:
         required: false
       AZURE_TRUSTED_SIGNING_PUBLISHER_NAME:
         required: false
+      # Fork: self-signed macOS code signing certificate (base64 PKCS#12) and its password.
+      MAC_SELF_SIGN_P12:
+        required: false
+      MAC_SELF_SIGN_PASSWORD:
+        required: false
     inputs:
       label:
         required: true
@@ -522,6 +527,38 @@ jobs:
           name: cli-linux-${{ inputs.arch }}
           path: wsl-runtime
 
+      # Fork: sign with the self-signed certificate. Trusting it for code signing makes it a
+      # valid identity for codesign and electron-builder on this throwaway runner.
+      - name: Import fork macOS signing certificate
+        if: inputs.platform == 'mac'
+        shell: bash
+        env:
+          P12: ${{ secrets.MAC_SELF_SIGN_P12 }}
+          P12_PASSWORD: ${{ secrets.MAC_SELF_SIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$P12" || -z "$P12_PASSWORD" ]]; then
+            echo "No fork signing certificate; the macOS build stays unsigned."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/fork-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/fork-signing.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/fork-signing.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -p codesigning "$keychain" | sed -n 's/.*"\(.*\)".*/\1/p' | head -n 1)"
+          security find-certificate -c "$identity" -p "$keychain" > "$RUNNER_TEMP/fork-signing.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/fork-signing.pem"
+          security find-identity -v -p codesigning "$keychain" | grep -F "\"$identity\""
+          rm -f "$RUNNER_TEMP/fork-signing.p12"
+          echo "::add-mask::$keychain_password"
+          echo "T3CODE_MAC_SELF_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "Fork macOS signing enabled: $identity"
+
       - name: Build desktop artifact
         shell: bash
         env:
@@ -531,8 +568,7 @@ jobs:
           pnpm_config_prefer_offline: "true"
           T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: true
           # A value without "/" (for example "none") builds without an update feed.
-          # Fork: macOS builds are unsigned and Squirrel.Mac rejects unsigned updates, so no feed.
-          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ inputs.platform == 'mac' && 'none' || vars.T3CODE_DESKTOP_UPDATE_REPOSITORY }}
+          T3CODE_DESKTOP_UPDATE_REPOSITORY: ${{ vars.T3CODE_DESKTOP_UPDATE_REPOSITORY }}
           T3CODE_DESKTOP_REUSE_LINUX_CAPTURE_HELPERS: ${{ steps.capture_helper_cache.outputs.cache-hit == 'true' }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

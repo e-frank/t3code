@@ -2863,6 +2863,18 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
           }
         : {}),
     };
+    // Fork: a self-signed identity instead of a Developer ID. Every release keeps the same
+    // designated requirement, which Squirrel.Mac checks before it installs an update. Not
+    // notarized, so no hardened runtime (it would also reject frameworks without a Team ID).
+    const forkSelfSignIdentity = yield* Config.String("T3CODE_MAC_SELF_SIGN_IDENTITY").pipe(
+      Config.option,
+    );
+    if (!signed && Option.isSome(forkSelfSignIdentity)) {
+      Object.assign(buildConfig.mac as Record<string, unknown>, {
+        identity: forkSelfSignIdentity.value,
+        hardenedRuntime: false,
+      });
+    }
   }
 
   if (platform === "mac" && target === "dmg") {
