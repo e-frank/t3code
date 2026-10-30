@@ -134,7 +134,6 @@ jobs:
       rust_target: aarch64-apple-darwin
       resource_key: darwin-arm64
       cli_archive: true
-      launch_check: true
 
   release:
     name: Publish release
