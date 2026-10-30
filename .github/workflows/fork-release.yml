@@ -11,18 +11,33 @@ name: Fork release
 # RELAY_URL (T3 Connect, public values from the official build) and
 # T3CODE_DESKTOP_UPDATE_REPOSITORY=erifrank/t3code-releases (the update feed).
 # Secret RELEASES_TOKEN: fine-grained token, Contents read and write on erifrank/t3code-releases.
+#
+# A tag push builds every platform. To rebuild only some, run it by hand on the branch:
+#   gh workflow run "Fork release" -R erifrank/t3code --ref custom -f tag=v0.1.5-ef.9 -f platforms=mac
+# The release creates the tag on the run's commit, and takes the other platforms' files over from
+# the current latest release of erifrank/t3code-releases, so their updaters keep finding a feed.
 
 on:
   push:
     tags: ["v*-ef.*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: New release tag, v<upstream>-ef.<n>
+        required: true
+        type: string
+      platforms:
+        description: Platforms to build, comma-separated (linux, win, mac)
+        required: true
+        default: linux,win,mac
+        type: string
 
 permissions:
   contents: write
   actions: read
 
 concurrency:
-  group: fork-release-${{ github.ref }}
+  group: fork-release-${{ inputs.tag || github.ref }}
 
 jobs:
   build_bundle:
@@ -31,6 +46,7 @@ jobs:
     timeout-minutes: 40
     outputs:
       version: ${{ steps.version.outputs.version }}
+      platforms: ${{ steps.version.outputs.platforms }}
     env:
       T3CODE_CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
       T3CODE_CLERK_JWT_TEMPLATE: ${{ vars.CLERK_JWT_TEMPLATE }}
@@ -45,7 +61,13 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - id: version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          PLATFORMS: ${{ inputs.platforms || 'linux,win,mac' }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+.[0-9]+.[0-9]+-ef.[0-9]+$ ]] || { echo "Bad tag: $TAG" >&2; exit 1; }
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "platforms=,${PLATFORMS// /}," >> "$GITHUB_OUTPUT"
 
       - uses: voidzero-dev/setup-vp@v1
         with:
@@ -72,6 +94,7 @@ jobs:
   desktop_linux_x64:
     name: Desktop Linux x64
     needs: build_bundle
+    if: contains(needs.build_bundle.outputs.platforms, ',linux,')
     uses: ./.github/workflows/release-desktop.yml
     with:
       version: ${{ needs.build_bundle.outputs.version }}
@@ -94,6 +117,7 @@ jobs:
   desktop_win_x64:
     name: Desktop Windows x64
     needs: build_bundle
+    if: contains(needs.build_bundle.outputs.platforms, ',win,')
     uses: ./.github/workflows/release-desktop.yml
     with:
       version: ${{ needs.build_bundle.outputs.version }}
@@ -117,6 +141,7 @@ jobs:
   desktop_mac_arm64:
     name: Desktop macOS arm64
     needs: build_bundle
+    if: contains(needs.build_bundle.outputs.platforms, ',mac,')
     uses: ./.github/workflows/release-desktop.yml
     secrets:
       MAC_SELF_SIGN_P12: ${{ secrets.MAC_SELF_SIGN_P12 }}
@@ -142,7 +167,12 @@ jobs:
   release:
     name: Publish release
     needs: [build_bundle, desktop_linux_x64, desktop_win_x64, desktop_mac_arm64]
+    # Skipped platform jobs must not skip the release; failed ones must.
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-24.04
+    env:
+      TAG: v${{ needs.build_bundle.outputs.version }}
+      PLATFORMS: ${{ needs.build_bundle.outputs.platforms }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -153,16 +183,29 @@ jobs:
       # only its plain name back. builder-debug.yml is a config dump, not a feed.
       - run: |
           rm -f assets/builder-debug.yml
-          mv assets/latest-win-x64.yml assets/latest.yml
+          [[ ! -f assets/latest-win-x64.yml ]] || mv assets/latest-win-x64.yml assets/latest.yml
+      # Platforms not built in this run: copy their files from the current latest release, so
+      # every platform's updater still finds its feed file in the newest release.
+      - env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        run: |
+          set -euo pipefail
+          args=()
+          [[ "$PLATFORMS" == *,linux,* ]] || args+=(-p latest-linux.yml -p '*.AppImage' -p '*.deb' -p '*-linux-x64.tar.gz')
+          [[ "$PLATFORMS" == *,win,* ]] || args+=(-p latest.yml -p '*-x64.exe' -p '*-x64.exe.blockmap' -p '*-win32-x64.zip')
+          [[ "$PLATFORMS" == *,mac,* ]] || args+=(-p latest-mac.yml -p '*-arm64.dmg*' -p '*-arm64.zip*' -p '*-darwin-arm64.tar.gz')
+          if (( ${#args[@]} )); then
+            latest=$(gh release view -R erifrank/t3code-releases --json tagName -q .tagName)
+            echo "Copying the platforms not built here from $latest."
+            gh release download "$latest" -R erifrank/t3code-releases -D assets "${args[@]}"
+          fi
           ls -la assets
           test -f assets/latest.yml && test -f assets/latest-linux.yml && test -f assets/latest-mac.yml
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" assets/* --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME" --notes "Fork build of ${GITHUB_REF_NAME%-ef.*} with the custom patches." --latest
+          gh release create "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"             --title "$TAG" --notes "Fork build of ${TAG%-ef.*} with the custom patches. Built: ${PLATFORMS:1:-1}." --latest
       - env:
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
-          gh release create "$GITHUB_REF_NAME" assets/* --repo erifrank/t3code-releases \
-            --title "$GITHUB_REF_NAME" --notes "Fork build of ${GITHUB_REF_NAME%-ef.*}." --latest
+          gh release create "$TAG" assets/* --repo erifrank/t3code-releases             --title "$TAG" --notes "Fork build of ${TAG%-ef.*}. Built: ${PLATFORMS:1:-1}." --latest
