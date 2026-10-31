@@ -9,29 +9,35 @@ const refreshedAt = "2026-10-30T12:00:00.000Z";
 const at = (iso: string) => Date.parse(iso);
 
 describe("promptCacheTimer", () => {
-  it("counts down a fixed TTL from the last refresh", () => {
+  it("counts up from the last refresh with a fixed TTL", () => {
     expect(
       promptCacheTimer(refreshedAt, at("2026-10-30T12:10:00.000Z"), ANTHROPIC_PROMPT_CACHE_TTL_MS),
-    ).toEqual({ kind: "expiresIn", ms: 50 * 60 * 1000 });
+    ).toEqual({ ms: 10 * 60 * 1000, state: "fresh" });
   });
 
-  it("expires once the TTL has passed", () => {
+  it("warns in the last five minutes of a fixed TTL", () => {
     expect(
-      promptCacheTimer(refreshedAt, at("2026-10-30T13:00:00.000Z"), ANTHROPIC_PROMPT_CACHE_TTL_MS),
-    ).toEqual({ kind: "expired" });
+      promptCacheTimer(refreshedAt, at("2026-10-30T12:55:00.000Z"), ANTHROPIC_PROMPT_CACHE_TTL_MS),
+    ).toEqual({ ms: 55 * 60 * 1000, state: "expiring" });
+  });
+
+  it("keeps counting up once the TTL has passed", () => {
+    expect(
+      promptCacheTimer(refreshedAt, at("2026-10-30T13:02:00.000Z"), ANTHROPIC_PROMPT_CACHE_TTL_MS),
+    ).toEqual({ ms: 62 * 60 * 1000, state: "expired" });
   });
 
   it("counts up without a TTL", () => {
     expect(promptCacheTimer(refreshedAt, at("2026-10-30T12:03:20.000Z"), null)).toEqual({
-      kind: "since",
       ms: 200_000,
+      state: "fresh",
     });
   });
 
   it("treats a refresh ahead of the local clock as just now", () => {
     expect(promptCacheTimer(refreshedAt, at("2026-10-30T11:59:58.000Z"), null)).toEqual({
-      kind: "since",
       ms: 0,
+      state: "fresh",
     });
   });
 
