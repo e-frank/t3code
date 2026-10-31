@@ -2,20 +2,18 @@ name: Fork release
 
 # Builds the personal fork (branch `custom`, rebased onto an upstream stable tag) for the
 # fleet: Linux x64 AppImage, Windows x64 installer and macOS arm64 DMG, published as a release
-# here and in the public erifrank/t3code-releases, which the app's updater follows (it cannot read
-# private releases). The macOS build is signed with a self-signed certificate (secrets
+# here; the app's updater follows this public repo's latest release. The macOS build is signed with a self-signed certificate (secrets
 # MAC_SELF_SIGN_P12, MAC_SELF_SIGN_PASSWORD): not notarized, but every release keeps the same
 # signature identity, which Squirrel.Mac requires to install an update.
 # Tag the rebased commit as v<upstream>-ef.<n>, for example v0.1.3-ef.1.
 # Repo variables: CLERK_PUBLISHABLE_KEY, CLERK_JWT_TEMPLATE, CLERK_CLI_OAUTH_CLIENT_ID,
 # RELAY_URL (T3 Connect, public values from the official build) and
-# T3CODE_DESKTOP_UPDATE_REPOSITORY=erifrank/t3code-releases (the update feed).
-# Secret RELEASES_TOKEN: fine-grained token, Contents read and write on erifrank/t3code-releases.
+# T3CODE_DESKTOP_UPDATE_REPOSITORY=e-frank/t3code (the update feed, this repo).
 #
 # A tag push builds every platform. To rebuild only some, run it by hand on the branch:
-#   gh workflow run "Fork release" -R erifrank/t3code --ref custom -f tag=v0.1.5-ef.9 -f platforms=mac
+#   gh workflow run "Fork release" -R e-frank/t3code --ref custom -f tag=v0.1.6-ef.3 -f platforms=mac
 # The release creates the tag on the run's commit, and takes the other platforms' files over from
-# the current latest release of erifrank/t3code-releases, so their updaters keep finding a feed.
+# the current latest release of this repo, so their updaters keep finding a feed.
 
 on:
   push:
@@ -187,7 +185,7 @@ jobs:
       # Platforms not built in this run: copy their files from the current latest release, so
       # every platform's updater still finds its feed file in the newest release.
       - env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           args=()
@@ -195,9 +193,9 @@ jobs:
           [[ "$PLATFORMS" == *,win,* ]] || args+=(-p latest.yml -p '*-x64.exe' -p '*-x64.exe.blockmap' -p '*-win32-x64.zip')
           [[ "$PLATFORMS" == *,mac,* ]] || args+=(-p latest-mac.yml -p '*-arm64.dmg*' -p '*-arm64.zip*' -p '*-darwin-arm64.tar.gz')
           if (( ${#args[@]} )); then
-            latest=$(gh release view -R erifrank/t3code-releases --json tagName -q .tagName)
+            latest=$(gh release view -R "$GITHUB_REPOSITORY" --json tagName -q .tagName)
             echo "Copying the platforms not built here from $latest."
-            gh release download "$latest" -R erifrank/t3code-releases -D assets "${args[@]}"
+            gh release download "$latest" -R "$GITHUB_REPOSITORY" -D assets "${args[@]}"
           fi
           ls -la assets
           test -f assets/latest.yml && test -f assets/latest-linux.yml && test -f assets/latest-mac.yml
@@ -205,7 +203,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$TAG" assets/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA"             --title "$TAG" --notes "Fork build of ${TAG%-ef.*} with the custom patches. Built: ${PLATFORMS:1:-1}." --latest
-      - env:
-          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
-        run: |
-          gh release create "$TAG" assets/* --repo erifrank/t3code-releases             --title "$TAG" --notes "Fork build of ${TAG%-ef.*}. Built: ${PLATFORMS:1:-1}." --latest
