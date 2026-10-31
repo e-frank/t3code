@@ -1,6 +1,6 @@
 import { TimerIcon } from "lucide-react";
 
-import { useNowSecond } from "~/hooks/useNowSecond";
+import { useNowMinute } from "~/hooks/useNowMinute";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
 
@@ -43,20 +43,21 @@ export function promptCacheTimer(
   return { ms, state };
 }
 
-/** `m:ss`, or `h:mm:ss` from an hour on. */
+/** Whole minutes: `<1m`, `12m`, or `1h 5m` from an hour on. */
 export function formatPromptCacheTimer(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = String(seconds % 60).padStart(2, "0");
-  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+  const minutes = Math.max(0, Math.floor(ms / 60_000));
+  if (minutes === 0) return "<1m";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 function PromptCacheTimerLabel(props: {
   readonly refreshedAt: string;
   readonly ttlMs: number | null;
 }) {
-  const timer = promptCacheTimer(props.refreshedAt, useNowSecond(), props.ttlMs);
+  const nowMinute = useNowMinute();
+  const timer = promptCacheTimer(props.refreshedAt, Date.parse(`${nowMinute}:00Z`), props.ttlMs);
   if (timer === null) return null;
   const text = `${formatPromptCacheTimer(timer.ms)} ago`;
   const title =
