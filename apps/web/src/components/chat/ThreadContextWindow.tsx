@@ -4,19 +4,25 @@ import { useNowSecond } from "~/hooks/useNowSecond";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
 
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
 /** Anthropic keeps a prompt cache for an hour after the last request that used it. */
 export const ANTHROPIC_PROMPT_CACHE_TTL_MS = 60 * 60 * 1000;
-/** The countdown turns to a warning this long before the cache expires. */
+/** The timer turns to a warning this long before a fixed-TTL cache expires. */
 const CACHE_EXPIRY_WARNING_MS = 5 * 60 * 1000;
 
-export type PromptCacheTimer =
-  | { readonly kind: "expiresIn"; readonly ms: number }
-  | { readonly kind: "expired" }
-  | { readonly kind: "since"; readonly ms: number };
+export type PromptCacheState = "fresh" | "expiring" | "expired";
+
+export interface PromptCacheTimer {
+  /** Time since the last refresh; the timer always counts up. */
+  readonly ms: number;
+  /** Where a fixed TTL stands; always `fresh` without one. */
+  readonly state: PromptCacheState;
+}
 
 /**
- * The prompt cache measured from its last refresh (the newest usage report, one per request):
- * time left with a fixed TTL, otherwise time since the refresh.
+ * The prompt cache measured from its last refresh (the newest usage report, one per request): time
+ * since the refresh, and with a fixed TTL whether the cache is about to expire or has expired.
  */
 export function promptCacheTimer(
   refreshedAt: string,
@@ -25,9 +31,16 @@ export function promptCacheTimer(
 ): PromptCacheTimer | null {
   const refreshed = Date.parse(refreshedAt);
   if (Number.isNaN(refreshed)) return null;
-  const elapsed = Math.max(0, now - refreshed);
-  if (ttlMs === null) return { kind: "since", ms: elapsed };
-  return elapsed >= ttlMs ? { kind: "expired" } : { kind: "expiresIn", ms: ttlMs - elapsed };
+  const ms = Math.max(0, now - refreshed);
+  const state: PromptCacheState =
+    ttlMs === null
+      ? "fresh"
+      : ms >= ttlMs
+        ? "expired"
+        : ttlMs - ms <= CACHE_EXPIRY_WARNING_MS
+          ? "expiring"
+          : "fresh";
+  return { ms, state };
 }
 
 /** `m:ss`, or `h:mm:ss` from an hour on. */
@@ -45,42 +58,43 @@ function PromptCacheTimerLabel(props: {
 }) {
   const timer = promptCacheTimer(props.refreshedAt, useNowSecond(), props.ttlMs);
   if (timer === null) return null;
-  // A countdown rounds up, so it reads 0:01 in its last second and expires at 0:00.
-  const text =
-    timer.kind === "expired"
-      ? "expired"
-      : timer.kind === "expiresIn"
-        ? formatPromptCacheTimer(timer.ms + 999)
-        : `${formatPromptCacheTimer(timer.ms)} ago`;
+  const text = `${formatPromptCacheTimer(timer.ms)} ago`;
   const title =
-    timer.kind === "expired"
-      ? "Prompt cache expired: the next message writes it again"
-      : timer.kind === "expiresIn"
-        ? `Prompt cache expires in ${text}, an hour after the last request`
-        : `Prompt cache last refreshed ${text}`;
+    props.ttlMs === null
+      ? `Prompt cache last refreshed ${text}`
+      : timer.state === "expired"
+        ? `Prompt cache last refreshed ${text} and expired: the next message writes it again`
+        : `Prompt cache last refreshed ${text}; it expires an hour after the last request`;
   return (
-    <span
-      title={title}
-      className={cn(
-        "inline-flex min-w-0 items-center gap-0.5 truncate",
-        timer.kind === "expired"
-          ? "text-destructive"
-          : timer.kind === "expiresIn" && timer.ms <= CACHE_EXPIRY_WARNING_MS
-            ? "text-warning"
-            : "text-muted-foreground",
-      )}
-    >
-      <TimerIcon aria-hidden className="size-3 shrink-0 self-center" />
-      <span className="sr-only">Prompt cache: </span>
-      {text}
-    </span>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            className={cn(
+              "inline-flex min-w-0 items-center gap-0.5 truncate",
+              timer.state === "expired"
+                ? "text-destructive"
+                : timer.state === "expiring"
+                  ? "text-warning"
+                  : "text-muted-foreground",
+            )}
+          />
+        }
+      >
+        <TimerIcon aria-hidden className="size-3 shrink-0 self-center" />
+        <span className="sr-only">Prompt cache: </span>
+        {text}
+      </TooltipTrigger>
+      <TooltipPopup>{title}</TooltipPopup>
+    </Tooltip>
   );
 }
 
 /**
  * Context use for the thread details panel; upstream's 20% and 10% left thresholds. With `cache`,
- * a prompt cache timer sits between the label and the token count: a countdown for a fixed TTL
- * (`ttlMs`), the time since the last refresh when the TTL varies (`null`).
+ * a prompt cache timer sits between the label and the token count, counting up from the last
+ * refresh. A fixed TTL (`ttlMs`) colours it as the cache nears and passes expiry; `null` when the
+ * TTL varies.
  */
 export function ThreadContextWindow(props: {
   readonly usage: ContextWindowSnapshot;
