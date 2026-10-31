@@ -47,10 +47,10 @@ describe("promptCacheTimer", () => {
 });
 
 describe("formatPromptCacheTimer", () => {
-  it("formats minutes and seconds, adding hours from an hour on", () => {
-    expect(formatPromptCacheTimer(0)).toBe("0:00");
-    expect(formatPromptCacheTimer(59_999)).toBe("0:59");
-    expect(formatPromptCacheTimer(12 * 60_000 + 34_000)).toBe("12:34");
-    expect(formatPromptCacheTimer(3_600_000 + 5 * 60_000 + 7_000)).toBe("1:05:07");
+  it("formats whole minutes, adding hours from an hour on", () => {
+    expect(formatPromptCacheTimer(0)).toBe("<1m");
+    expect(formatPromptCacheTimer(59_999)).toBe("<1m");
+    expect(formatPromptCacheTimer(12 * 60_000 + 34_000)).toBe("12m");
+    expect(formatPromptCacheTimer(3_600_000 + 5 * 60_000 + 7_000)).toBe("1h 5m");
   });
 });
