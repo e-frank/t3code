@@ -389,19 +389,41 @@ function CompactWindow(props: {
   );
 }
 
-/**
- * The thread details "Usage" item in this fork's layout: the clickable usage limits, then the
- * context window. Replaces upstream's `ThreadDetailsUsage` behind the same "Usage" setting.
- */
-export function ThreadDetailsForkUsage(props: {
+interface ThreadDetailsForkUsageInput {
   readonly providerInstanceId: ProviderInstanceId | null;
   readonly model: string | null;
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
   readonly contextWindow: ContextWindowSnapshot | null;
-}) {
+}
+
+/**
+ * The thread details "Usage" item in this fork's layout: the clickable usage limits. Replaces
+ * upstream's `ThreadDetailsUsage` behind the same "Usage" setting.
+ */
+export function ThreadDetailsForkUsage(props: ThreadDetailsForkUsageInput) {
+  const { contextWindow: _contextWindow, ...limits } = props;
+  return (
+    <ThreadDetailsSection
+      headingId="thread-details-usage-limits-heading"
+      title="Usage limits"
+      showHeading={false}
+    >
+      {/* The section hides itself while this stays empty. */}
+      <div>
+        <ThreadUsageLimits {...limits} />
+      </div>
+    </ThreadDetailsSection>
+  );
+}
+
+/**
+ * The thread details "Context window" item in this fork's layout: the context bar with the prompt
+ * cache timer. Replaces upstream's `ThreadDetailsContext` behind the same "Context window" setting.
+ */
+export function ThreadDetailsForkContext(props: ThreadDetailsForkUsageInput) {
   const { contextWindow, ...limits } = props;
-  // Claude caches for a fixed hour; Codex's cache lifetime varies, so it shows time since refresh.
+  // Claude caches for a fixed hour; Codex's cache lifetime varies, so it has no expiry colours.
   const driver = currentUsage(limits.providers, limits.providerInstanceId, limits.model)?.driver;
   const cache =
     driver === "claudeAgent"
@@ -409,28 +431,15 @@ export function ThreadDetailsForkUsage(props: {
       : driver === "codex"
         ? { ttlMs: null }
         : undefined;
+  if (!contextWindow) return null;
   return (
-    <>
-      <ThreadDetailsSection
-        headingId="thread-details-usage-limits-heading"
-        title="Usage limits"
-        showHeading={false}
-      >
-        {/* The section hides itself while this stays empty. */}
-        <div>
-          <ThreadUsageLimits {...limits} />
-        </div>
-      </ThreadDetailsSection>
-      {contextWindow ? (
-        <ThreadDetailsSection
-          headingId="thread-details-context-window-heading"
-          title="Context window"
-          showHeading={false}
-        >
-          <ThreadContextWindow usage={contextWindow} cache={cache} />
-        </ThreadDetailsSection>
-      ) : null}
-    </>
+    <ThreadDetailsSection
+      headingId="thread-details-context-window-heading"
+      title="Context window"
+      showHeading={false}
+    >
+      <ThreadContextWindow usage={contextWindow} cache={cache} />
+    </ThreadDetailsSection>
   );
 }
 
