@@ -59,6 +59,8 @@ export const UsageLimitSourceAccount = Schema.Struct({
   id: TrimmedNonEmptyString,
   driver: ProviderDriverKind,
   email: Schema.optional(TrimmedNonEmptyString),
+  /** Fork: the hub's own name for the login (CLIProxyAPI `note`), shown instead of the file name. */
+  displayName: Schema.optional(TrimmedNonEmptyString),
   plan: Schema.optional(TrimmedNonEmptyString),
   workspaceId: Schema.optional(TrimmedNonEmptyString),
   usageLimits: ServerProviderUsageLimits,
