@@ -402,7 +402,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         merge(resolved ?? key, {
           key,
           driver: account.driver,
-          displayName: account.email ? null : hubAccountName(account),
+          displayName: account.displayName ?? (account.email ? null : hubAccountName(account)),
           email: account.email,
           plan: account.plan,
           accentColor: undefined,
@@ -1014,6 +1014,7 @@ export function collectProviderUsageLimits(
               },
             }
           : {}),
+        ...(account.displayName ? { displayName: account.displayName } : {}),
         ...(account.plan ? { plan: account.plan } : {}),
         ...(account.email ? { email: account.email } : {}),
         limits: account.usageLimits,
