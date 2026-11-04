@@ -95,9 +95,13 @@ function collectAllUsageAccounts(
   return accounts;
 }
 
-/** Hub accounts are keyed `<source>:<auth file>`; the file name is the account's name. */
+/**
+ * Hub accounts are keyed `<source>:<auth file>`. Their name is the hub's note for the login
+ * (`displayName`), else the file name.
+ */
 function accountName(account: UsageAccount): string {
   if (account.sourceLabel === undefined) return accountLabel(account);
+  if (account.displayName?.trim()) return account.displayName.trim();
   return account.id.slice(account.id.indexOf(":") + 1).replace(/\.json$/, "");
 }
 

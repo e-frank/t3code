@@ -51,6 +51,7 @@ function fixture(
     accounts?: Array<
       (typeof accounts)[number] & {
         disabled?: boolean;
+        note?: string;
         id_token: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
       }
     >;
@@ -261,6 +262,21 @@ describe("CLIProxyAPI built-in management API", () => {
           ["ChatGPT Free Subscription", "monthly"],
         ],
       );
+    }),
+  );
+
+  it.effect("names an account by its hub note when it has one", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [
+          { ...accounts[0]!, note: " Codex Team " },
+          { ...accounts[1]!, note: "  " },
+        ],
+        upstream: () => ({ status: 200, body: { rate_limit: null } }),
+      });
+      const api = yield* test.api;
+      const result = yield* api.readAccounts(config);
+      expect(result.map((account) => account.displayName)).toEqual(["Codex Team", undefined]);
     }),
   );
 
