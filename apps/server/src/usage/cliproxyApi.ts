@@ -44,6 +44,8 @@ const AuthFile = Schema.Struct({
   auth_index: Schema.String,
   provider: Schema.String,
   email: Schema.optional(Schema.String),
+  // Fork: the login's note in CLIProxyAPI ("Claude Team"), its readable name.
+  note: Schema.optional(Schema.String),
   disabled: Schema.optional(Schema.Boolean),
   project_id: Schema.optional(Schema.String),
   id_token: Schema.optional(
@@ -215,6 +217,7 @@ interface HubProvider {
 
 const listedIdentity = (account: AuthFile) => ({
   ...(account.email ? { email: account.email } : {}),
+  ...(account.note?.trim() ? { displayName: account.note.trim() } : {}),
   ...(account.id_token?.chatgpt_account_id?.trim()
     ? { workspaceId: account.id_token.chatgpt_account_id.trim() }
     : {}),
