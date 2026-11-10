@@ -1,8 +1,10 @@
 name: Fork release
 
 # Builds the personal fork (branch `custom`, rebased onto an upstream stable tag) for the
-# fleet: Linux x64 AppImage, Windows x64 installer and macOS arm64 DMG, published as a release
-# here; the app's updater follows this public repo's latest release. The macOS build is signed with a self-signed certificate (secrets
+# fleet: Linux x64 AppImage and macOS arm64 DMG, published as a release
+# here; the app's updater follows this public repo's latest release. The Windows x64 installer
+# is no longer built by default (the Windows machine is retired, last build v0.1.8-ef.1); its job
+# stays and runs when `win` is listed in `platforms`. The macOS build is signed with a self-signed certificate (secrets
 # MAC_SELF_SIGN_P12, MAC_SELF_SIGN_PASSWORD): not notarized, but every release keeps the same
 # signature identity, which Squirrel.Mac requires to install an update.
 # Tag the rebased commit as v<upstream>-ef.<n>, for example v0.1.3-ef.1.
@@ -10,7 +12,7 @@ name: Fork release
 # RELAY_URL (T3 Connect, public values from the official build) and
 # T3CODE_DESKTOP_UPDATE_REPOSITORY=e-frank/t3code (the update feed, this repo).
 #
-# A tag push builds every platform. To rebuild only some, run it by hand on the branch:
+# A tag push builds Linux and macOS. To build other platforms, run it by hand on the branch:
 #   gh workflow run "Fork release" -R e-frank/t3code --ref custom -f tag=v0.1.6-ef.3 -f platforms=mac
 # The release creates the tag on the run's commit, and takes the other platforms' files over from
 # the current latest release of this repo, so their updaters keep finding a feed.
@@ -27,7 +29,7 @@ on:
       platforms:
         description: Platforms to build, comma-separated (linux, win, mac)
         required: true
-        default: linux,win,mac
+        default: linux,mac
         type: string
 
 permissions:
@@ -61,7 +63,7 @@ jobs:
       - id: version
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
-          PLATFORMS: ${{ inputs.platforms || 'linux,win,mac' }}
+          PLATFORMS: ${{ inputs.platforms || 'linux,mac' }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+.[0-9]+.[0-9]+-ef.[0-9]+$ ]] || { echo "Bad tag: $TAG" >&2; exit 1; }
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
