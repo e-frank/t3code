@@ -547,6 +547,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.sidebarWorkingShelfEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
       ? [gt("Working section")]
       : []),
+    ...(settings.sidebarReturnToTopEnabled !== DEFAULT_UNIFIED_SETTINGS.sidebarReturnToTopEnabled
+      ? ["Move finished threads to the top"]
+      : []),
     ...(settings.sidebarAutoSettleAfterDays !== DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
       ? [gt("Auto-settle inactive threads")]
       : []),
@@ -739,6 +742,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
+      sidebarReturnToTopEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarReturnToTopEnabled,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleKeepPullRequests: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleKeepPullRequests,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
@@ -982,6 +986,41 @@ export function GeneralSettingsPanel() {
                 updateSettings({ sidebarWorkingShelfEnabled: Boolean(checked) })
               }
               aria-label={gt("Working section")}
+            />
+          }
+        />
+        <SettingsRow
+          {...setting("return-to-top")}
+          description={
+            settings.sidebarWorkingShelfEnabled
+              ? gt(
+                  "Move a thread to the top of the inbox when it finishes or needs your input. The Working section already does this; turn it off to use this instead.",
+                )
+              : gt(
+                  "Move a thread to the top of the inbox when it finishes or needs your input. Working threads stay where they are until then.",
+                )
+          }
+          resetAction={
+            settings.sidebarReturnToTopEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarReturnToTopEnabled ? (
+              <SettingResetButton
+                ariaLabel={gt("Reset move finished threads to the top to default")}
+                onClick={() =>
+                  updateSettings({
+                    sidebarReturnToTopEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarReturnToTopEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarReturnToTopEnabled}
+              disabled={settings.sidebarWorkingShelfEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarReturnToTopEnabled: Boolean(checked) })
+              }
+              aria-label={gt("Move finished threads to the top")}
             />
           }
         />
