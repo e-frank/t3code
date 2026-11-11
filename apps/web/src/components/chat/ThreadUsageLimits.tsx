@@ -123,6 +123,19 @@ function AccountName(props: { readonly name: string }) {
 // Always laid out, so weekly sits in the same column for accounts without a session window.
 const FIXED_KINDS: ReadonlySet<WindowKind> = new Set(["session", "weekly"]);
 
+// Fork: upstream names a model's own weekly limit `seven_day_<model>`, labelled "Weekly · Fable".
+// It gets no column of its own: the dialog draws it under the weekly bar, the compact card next
+// to the account name.
+const isModelWindow = (window: ServerProviderUsageWindow) => window.id.startsWith("seven_day_");
+const modelName = (window: ServerProviderUsageWindow) =>
+  window.label.split(" · ").at(-1) ?? window.label;
+const kindWindow = (account: UsageAccount, kind: WindowKind) =>
+  account.limits.windows.find((window) => window.kind === kind && !isModelWindow(window));
+const modelWindows = (account: UsageAccount, kind?: WindowKind) =>
+  account.limits.windows.filter(
+    (window) => isModelWindow(window) && (kind === undefined || window.kind === kind),
+  );
+
 /**
  * One column per window kind any account in the group reports, headed by its length ("5h"). The
  * fixed kinds stay as empty columns (`title: null`) when no account reports them.
@@ -131,7 +144,7 @@ function groupColumns(accounts: readonly UsageAccount[]) {
   return KIND_ORDER.flatMap((kind): { kind: WindowKind; title: string | null }[] => {
     const sample = accounts
       .flatMap((account) => account.limits.windows)
-      .find((window) => window.kind === kind);
+      .find((window) => window.kind === kind && !isModelWindow(window));
     if (!sample) return FIXED_KINDS.has(kind) ? [{ kind, title: null }] : [];
     const title = sample.windowDurationMins
       ? shortDuration(sample.windowDurationMins * 60_000)
@@ -140,11 +153,38 @@ function groupColumns(accounts: readonly UsageAccount[]) {
   });
 }
 
+/** Fork: a model's own limit as a thin bar under its kind's bar, named and with its share. */
+function ModelLimit(props: { readonly window: ServerProviderUsageWindow }) {
+  const used = usedPercent(props.window);
+  const tone = usageTone(props.window);
+  return (
+    <div className="flex flex-col gap-1">
+      <div
+        role="img"
+        aria-label={`${props.window.label}: ${used}% used`}
+        className="relative h-0.5 rounded-full bg-input"
+      >
+        {used > 0 ? (
+          <div
+            className={cn("absolute inset-y-0 left-0 rounded-full", tone.bar)}
+            style={{ width: `${used}%` }}
+          />
+        ) : null}
+      </div>
+      <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums">
+        <span className="truncate text-muted-foreground">{modelName(props.window)}</span>
+        <span className={cn("shrink-0 font-medium", tone.text)}>{used}%</span>
+      </div>
+    </div>
+  );
+}
+
 function WindowCell(props: {
   readonly window: ServerProviderUsageWindow | undefined;
+  readonly models?: readonly ServerProviderUsageWindow[];
   readonly now: number;
 }) {
-  const { window, now } = props;
+  const { window, models = [], now } = props;
   if (!window) {
     return (
       <div className="flex flex-col gap-1.5">
@@ -187,6 +227,9 @@ function WindowCell(props: {
           />
         )}
       </div>
+      {models.map((model) => (
+        <ModelLimit key={model.id} window={model} />
+      ))}
     </div>
   );
 }
@@ -226,7 +269,7 @@ function ProviderGroup(props: {
           return (
             <div
               key={`${account.driver}:${account.id}`}
-              className="grid items-center gap-x-6 border-t px-4 py-3"
+              className="grid items-start gap-x-6 border-t px-4 py-3"
               style={gridStyle}
             >
               <div className="flex min-w-0 items-center gap-2.5">
@@ -258,7 +301,8 @@ function ProviderGroup(props: {
                   ) : (
                     <WindowCell
                       key={column.kind}
-                      window={account.limits.windows.find((window) => window.kind === column.kind)}
+                      window={kindWindow(account, column.kind)}
+                      models={modelWindows(account, column.kind)}
                       now={now}
                     />
                   ),
@@ -512,6 +556,23 @@ function ThreadUsageLimits(props: {
                 <span className="truncate font-medium text-xs">
                   <AccountName name={accountName(account)} />
                 </span>
+                {notice
+                  ? null
+                  : modelWindows(account).map((model, index) => {
+                      const used = usedPercent(model);
+                      return (
+                        <span
+                          key={model.id}
+                          className={cn(
+                            "shrink-0 text-2xs text-muted-foreground tabular-nums",
+                            index === 0 && "ml-auto",
+                          )}
+                        >
+                          {modelName(model)}{" "}
+                          <span className={cn("font-medium", usageTone(model).text)}>{used}%</span>
+                        </span>
+                      );
+                    })}
               </div>
               {notice ? (
                 <span className="text-2xs text-muted-foreground">{notice}</span>
@@ -524,9 +585,7 @@ function ThreadUsageLimits(props: {
                       <CompactWindow
                         key={column.kind}
                         title={column.title}
-                        window={account.limits.windows.find(
-                          (window) => window.kind === column.kind,
-                        )}
+                        window={kindWindow(account, column.kind)}
                         now={now}
                       />
                     ),

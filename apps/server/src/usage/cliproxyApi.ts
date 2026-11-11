@@ -57,6 +57,10 @@ const AuthFile = Schema.Struct({
   ),
 });
 const AuthFiles = Schema.Struct({ files: Schema.Array(AuthFile) });
+// Fork: the models one login serves, after the hub removed its `excluded_models`.
+const AuthFileModels = Schema.Struct({
+  models: Schema.Array(Schema.Struct({ id: Schema.String })),
+});
 const ApiResponse = Schema.Struct({ status_code: Schema.Number, body: Schema.String });
 const CodexWindow = Schema.Struct({
   used_percent: Schema.Number,
@@ -119,6 +123,7 @@ const CreditList = Schema.Struct({
 });
 
 const decodeAuthFiles = Schema.decodeUnknownEffect(AuthFiles);
+const decodeAuthFileModels = Schema.decodeUnknownEffect(AuthFileModels);
 const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const decodeApiResponse = Schema.decodeUnknownEffect(ApiResponse);
 const decodeCreditList = Schema.decodeUnknownEffect(Schema.fromJsonString(CreditList));
@@ -212,8 +217,22 @@ interface HubProvider {
     readonly account: AuthFile;
     readonly call: HubCall;
     readonly checkedAt: string;
+    /** Fork: model ids the login serves, or undefined when the hub cannot tell. */
+    readonly servedModels: Effect.Effect<ReadonlyArray<string> | undefined>;
   }) => Effect.Effect<HubReading, UsageLimitSourceError | Schema.SchemaError, Digest.Digest>;
 }
+
+/**
+ * Fork: whether a login serves a model family by its display name ("Fable" matches
+ * `claude-fable-5-2`), so a per-model limit of a model the login is kept off is not shown.
+ */
+const servesModel = (served: ReadonlyArray<string>, displayName: string) => {
+  const family = displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return family === "" || served.some((id) => `-${id.toLowerCase()}-`.includes(`-${family}-`));
+};
 
 const listedIdentity = (account: AuthFile) => ({
   ...(account.email ? { email: account.email } : {}),
@@ -310,11 +329,11 @@ const HUB_PROVIDERS = new Map<string, HubProvider>([
         // The OAuth usage endpoint can return 429 without a Claude Code user agent.
         "User-Agent": "claude-code/2.1.273",
       }),
-      read: Effect.fnUntraced(function* ({ account, call, checkedAt }) {
+      read: Effect.fnUntraced(function* ({ account, call, checkedAt, servedModels }) {
         const usage = yield* decodeClaudeUsage(
           yield* call("https://api.anthropic.com/api/oauth/usage"),
         );
-        const model_scoped = (usage.limits ?? []).flatMap((limit) =>
+        const scoped = (usage.limits ?? []).flatMap((limit) =>
           limit.kind === "weekly_scoped" && limit.scope?.model && typeof limit.percent === "number"
             ? [
                 {
@@ -325,6 +344,13 @@ const HUB_PROVIDERS = new Map<string, HubProvider>([
               ]
             : [],
         );
+        // Fork: Anthropic reports a model's weekly limit even where using it costs usage credits;
+        // a login whose hub `excluded_models` keep it off that model does not show the limit.
+        const served = scoped.length > 0 ? yield* servedModels : undefined;
+        const model_scoped =
+          served === undefined
+            ? scoped
+            : scoped.filter((entry) => servesModel(served, entry.display_name));
         const rateLimits = {
           five_hour: usage.five_hour ?? null,
           seven_day: usage.seven_day ?? null,
@@ -472,7 +498,15 @@ export const makeCliproxyApi = Effect.gen(function* () {
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
     const call: HubCall = (url, data) =>
       apiCall(hub, account, provider.header(account, platform, architecture), url, data);
-    const reading = yield* provider.read({ account, call, checkedAt }).pipe(
+    const servedModels = management(
+      hub,
+      `auth-files/models?name=${encodeURIComponent(account.id)}`,
+    ).pipe(
+      Effect.flatMap(decodeAuthFileModels),
+      Effect.map((response) => response.models.map((model) => model.id)),
+      Effect.orElseSucceed(() => undefined),
+    );
+    const reading = yield* provider.read({ account, call, checkedAt, servedModels }).pipe(
       Effect.provideService(Digest.Digest, digest),
       Effect.orElseSucceed(() => ({
         ...listedIdentity(account),
