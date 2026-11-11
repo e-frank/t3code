@@ -462,6 +462,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
+    id: "return-to-top",
+    title: "Move finished threads to the top",
+    to: "/settings/general",
+    searchTerms: ["done finished input waiting attention inbox sidebar order top"],
+  },
+  {
     id: "boring-sidebar",
     title: "Boring sidebar (group by project)",
     to: "/settings/labs",

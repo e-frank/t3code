@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import {
   createInboxReturnTracker,
   isThreadWorking,
+  sortInboxThreadsByFinish,
   sortInboxThreadsByReturn,
   sortWorkingThreadsBySend,
 } from "./threadInbox.ts";
@@ -214,6 +215,39 @@ describe("createInboxReturnTracker", () => {
     vi.advanceTimersByTime(2_000);
     expect(notify).not.toHaveBeenCalled();
     expect(tracker.returnedAt(thread("a", false))).toBeUndefined();
+  });
+});
+
+describe("sortInboxThreadsByFinish", () => {
+  it("moves a thread up when its run completes, not when it is sent", () => {
+    const run = (requestedAt: string, completedAt: string | null) => ({
+      runId: RunId.make(`run:${requestedAt}`),
+      status: completedAt === null ? ("running" as const) : ("completed" as const),
+      requestedAt,
+      startedAt: requestedAt,
+      completedAt,
+      assistantMessageId: null,
+    });
+    const finished = {
+      ...thread("finished", false),
+      latestRun: run("2026-06-01T01:00:00.000Z", "2026-06-01T03:00:00.000Z"),
+    };
+    const sent = {
+      ...thread("sent", true),
+      latestRun: run("2026-06-01T04:00:00.000Z", null),
+    };
+    expect(sortInboxThreadsByFinish([sent, finished]).map((entry) => entry.id)).toEqual([
+      "finished",
+      "sent",
+    ]);
+    expect(sortInboxThreadsByFinish([finished, sent], () => undefined)).toEqual(
+      sortInboxThreadsByFinish([sent, finished]),
+    );
+    expect(
+      sortInboxThreadsByFinish([finished, sent], (entry) =>
+        entry.id === "sent" ? Date.parse("2026-06-01T05:00:00.000Z") : undefined,
+      ).map((entry) => entry.id),
+    ).toEqual(["sent", "finished"]);
   });
 });
 
