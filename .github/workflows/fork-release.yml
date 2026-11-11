@@ -77,7 +77,11 @@ jobs:
 
       - run: vp install --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
       - run: node scripts/update-release-package-versions.ts "${{ steps.version.outputs.version }}"
-      - run: sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
+      # Fork: the runner's DNS at times fails for Ubuntu's package hosts (.github/scripts/fork-ubuntu-hosts.sh).
+      - timeout-minutes: 10
+        run: |
+          bash .github/scripts/fork-ubuntu-hosts.sh
+          sudo apt-get update && sudo apt-get install -y libsecret-1-dev pkg-config
       - run: vp run build:desktop
         env:
           T3CODE_TELEMETRY_CHANNEL: dev
