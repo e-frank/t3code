@@ -95,6 +95,42 @@ export function sortInboxThreadsByFinish<T extends InboxThreadInput>(
   return sortNewestFirst(threads, timestamps);
 }
 
+/**
+ * Fork: a thread's shell only carries its latest run, so its finish time is gone once the
+ * next run starts. This keeps the latest finish seen, so a working thread holds its place.
+ * A thread first seen while working is placed by when that run was sent.
+ */
+export function createInboxFinishTracker() {
+  const keyOf = (thread: Pick<InboxThreadInput, "environmentId" | "id">) =>
+    `${thread.environmentId}:${thread.id}`;
+  const finishes = new Map<string, number>();
+  return {
+    observe(threads: readonly InboxThreadInput[] | null) {
+      if (threads === null) {
+        finishes.clear();
+        return;
+      }
+      const present = new Set<string>();
+      for (const thread of threads) {
+        const key = keyOf(thread);
+        present.add(key);
+        const known = finishes.get(key);
+        const finishedAt =
+          toSortableTimestamp(thread.latestRun?.completedAt ?? undefined) ??
+          (known === undefined
+            ? toSortableTimestamp(thread.latestRun?.requestedAt ?? undefined)
+            : null);
+        if (finishedAt !== null && finishedAt > (known ?? 0)) finishes.set(key, finishedAt);
+      }
+      for (const key of finishes.keys()) {
+        if (!present.has(key)) finishes.delete(key);
+      }
+    },
+    finishedAt: (thread: Pick<InboxThreadInput, "environmentId" | "id">) =>
+      finishes.get(keyOf(thread)),
+  };
+}
+
 type WorkingSortInput = Pick<
   EnvironmentThreadShell,
   "id" | "environmentId" | "createdAt" | "latestRun" | "latestUserAuthoredMessageAt"
