@@ -31,6 +31,7 @@ import {
   emptyOptimisticUserMessages,
   reconcileOptimisticUserMessages,
 } from "./chat/optimisticUserMessages";
+import { usePromptCacheMissTracker } from "./chat/promptCacheMiss";
 import { useTimelineRewind } from "./chat/useTimelineRewind";
 import { useThreadLifecycle } from "./chat/useThreadLifecycle";
 import { useRightPanelActions } from "./chat/useRightPanelActions";
@@ -564,6 +565,7 @@ export default function ChatView(props: ChatViewProps) {
     serverProjection,
     activeProviderThread,
   );
+  usePromptCacheMissTracker(routeThreadKey, activeThreadLiveTokenUsage);
   const serverVisibleTurnItems = useQuietThreadVisibleTurnItems(routeThreadDetailRef);
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = (() => {
@@ -4032,6 +4034,8 @@ export default function ChatView(props: ChatViewProps) {
                     providers: providerStatuses,
                     sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                     contextWindow: activeContextWindow,
+                    threadKey: routeThreadKey,
+                    promptCacheTtlMs: activeThreadLiveTokenUsage?.promptCacheTtlMs,
                   }}
                 />
 
