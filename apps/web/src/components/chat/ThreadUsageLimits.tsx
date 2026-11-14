@@ -7,10 +7,9 @@ import type {
 import {
   collectProviderUsageLimits,
   elapsedShare,
-  formatDuration,
-  limitsNotice,
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
+import { formatDuration, limitsNotice } from "@t3tools/shared/usageLimitsCopy";
 import { useState } from "react";
 
 import { useNowMinute } from "~/hooks/useNowMinute";
@@ -21,7 +20,6 @@ import { Badge } from "../ui/badge";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { accountLabel } from "./ComposerUsageLimits";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
-import { usePromptCacheMiss } from "./promptCacheMiss";
 import { ANTHROPIC_PROMPT_CACHE_TTL_MS, ThreadContextWindow } from "./ThreadContextWindow";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
@@ -400,8 +398,8 @@ interface ThreadDetailsForkUsageInput {
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
   readonly contextWindow: ContextWindowSnapshot | null;
-  /** The thread the context belongs to, for its remembered cache miss. */
-  readonly threadKey: string | null;
+  /** Prompt tokens the latest turn sent again on a cache miss, null without one. */
+  readonly promptCacheMissTokens: number | null;
   /** The cache lifetime the latest request reported, when it reported one. */
   readonly promptCacheTtlMs: number | undefined;
 }
@@ -413,7 +411,7 @@ interface ThreadDetailsForkUsageInput {
 export function ThreadDetailsForkUsage(props: ThreadDetailsForkUsageInput) {
   const {
     contextWindow: _contextWindow,
-    threadKey: _threadKey,
+    promptCacheMissTokens: _promptCacheMissTokens,
     promptCacheTtlMs: _promptCacheTtlMs,
     ...limits
   } = props;
@@ -436,8 +434,7 @@ export function ThreadDetailsForkUsage(props: ThreadDetailsForkUsageInput) {
  * cache timer. Replaces upstream's `ThreadDetailsContext` behind the same "Context window" setting.
  */
 export function ThreadDetailsForkContext(props: ThreadDetailsForkUsageInput) {
-  const { contextWindow, threadKey, promptCacheTtlMs, ...limits } = props;
-  const miss = usePromptCacheMiss(threadKey);
+  const { contextWindow, promptCacheMissTokens, promptCacheTtlMs, ...limits } = props;
   // Claude reports its cache lifetime; Codex's varies, so it has no expiry colours.
   const driver = currentUsage(limits.providers, limits.providerInstanceId, limits.model)?.driver;
   const cache =
@@ -453,7 +450,7 @@ export function ThreadDetailsForkContext(props: ThreadDetailsForkUsageInput) {
       title="Context window"
       showHeading={false}
     >
-      <ThreadContextWindow usage={contextWindow} cache={cache} miss={miss} />
+      <ThreadContextWindow usage={contextWindow} cache={cache} missTokens={promptCacheMissTokens} />
     </ThreadDetailsSection>
   );
 }
