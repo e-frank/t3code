@@ -25,7 +25,7 @@ export interface PromptCacheTimer {
  * The prompt cache measured from its last refresh (the newest usage report, one per request): time
  * since the refresh, and with a fixed TTL whether the cache is about to expire or has expired.
  */
-export function promptCacheTimer(
+function promptCacheTimer(
   refreshedAt: string,
   now: number,
   ttlMs: number | null,
@@ -45,7 +45,7 @@ export function promptCacheTimer(
 }
 
 /** Whole minutes: `<1m`, `12m`, or `1h 5m` from an hour on. */
-export function formatPromptCacheTimer(ms: number): string {
+function formatPromptCacheTimer(ms: number): string {
   const minutes = Math.max(0, Math.floor(ms / 60_000));
   if (minutes === 0) return "<1m";
   const h = Math.floor(minutes / 60);
