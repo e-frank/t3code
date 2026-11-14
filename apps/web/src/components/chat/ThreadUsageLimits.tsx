@@ -21,6 +21,7 @@ import { Badge } from "../ui/badge";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { accountLabel } from "./ComposerUsageLimits";
 import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
+import { usePromptCacheMiss } from "./promptCacheMiss";
 import { ANTHROPIC_PROMPT_CACHE_TTL_MS, ThreadContextWindow } from "./ThreadContextWindow";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";
 import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
@@ -443,6 +444,10 @@ interface ThreadDetailsForkUsageInput {
   readonly providers: readonly ServerProvider[];
   readonly sources: UsageLimitSourceSnapshots;
   readonly contextWindow: ContextWindowSnapshot | null;
+  /** The thread the context belongs to, for its remembered cache miss. */
+  readonly threadKey: string | null;
+  /** The cache lifetime the latest request reported, when it reported one. */
+  readonly promptCacheTtlMs: number | undefined;
 }
 
 /**
@@ -450,7 +455,12 @@ interface ThreadDetailsForkUsageInput {
  * upstream's `ThreadDetailsUsage` behind the same "Usage" setting.
  */
 export function ThreadDetailsForkUsage(props: ThreadDetailsForkUsageInput) {
-  const { contextWindow: _contextWindow, ...limits } = props;
+  const {
+    contextWindow: _contextWindow,
+    threadKey: _threadKey,
+    promptCacheTtlMs: _promptCacheTtlMs,
+    ...limits
+  } = props;
   return (
     <ThreadDetailsSection
       headingId="thread-details-usage-limits-heading"
@@ -470,12 +480,13 @@ export function ThreadDetailsForkUsage(props: ThreadDetailsForkUsageInput) {
  * cache timer. Replaces upstream's `ThreadDetailsContext` behind the same "Context window" setting.
  */
 export function ThreadDetailsForkContext(props: ThreadDetailsForkUsageInput) {
-  const { contextWindow, ...limits } = props;
-  // Claude caches for a fixed hour; Codex's cache lifetime varies, so it has no expiry colours.
+  const { contextWindow, threadKey, promptCacheTtlMs, ...limits } = props;
+  const miss = usePromptCacheMiss(threadKey);
+  // Claude reports its cache lifetime; Codex's varies, so it has no expiry colours.
   const driver = currentUsage(limits.providers, limits.providerInstanceId, limits.model)?.driver;
   const cache =
     driver === "claudeAgent"
-      ? { ttlMs: ANTHROPIC_PROMPT_CACHE_TTL_MS }
+      ? { ttlMs: promptCacheTtlMs ?? ANTHROPIC_PROMPT_CACHE_TTL_MS }
       : driver === "codex"
         ? { ttlMs: null }
         : undefined;
@@ -486,7 +497,7 @@ export function ThreadDetailsForkContext(props: ThreadDetailsForkUsageInput) {
       title="Context window"
       showHeading={false}
     >
-      <ThreadContextWindow usage={contextWindow} cache={cache} />
+      <ThreadContextWindow usage={contextWindow} cache={cache} miss={miss} />
     </ThreadDetailsSection>
   );
 }

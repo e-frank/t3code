@@ -5,11 +5,12 @@ import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/contex
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
 
+import type { PromptCacheMiss } from "./promptCacheMiss";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
-/** Anthropic keeps a prompt cache for an hour after the last request that used it. */
+/** Claude's cache lifetime while no request has reported one: an hour, as Claude Code is set up. */
 export const ANTHROPIC_PROMPT_CACHE_TTL_MS = 60 * 60 * 1000;
-/** The timer turns to a warning this long before a fixed-TTL cache expires. */
+/** The timer turns to a warning this long before a fixed-TTL cache expires, at most. */
 const CACHE_EXPIRY_WARNING_MS = 5 * 60 * 1000;
 
 export type PromptCacheState = "fresh" | "expiring" | "expired";
@@ -38,7 +39,7 @@ function promptCacheTimer(
       ? "fresh"
       : ms >= ttlMs
         ? "expired"
-        : ttlMs - ms <= CACHE_EXPIRY_WARNING_MS
+        : ttlMs - ms <= Math.min(CACHE_EXPIRY_WARNING_MS, ttlMs / 5)
           ? "expiring"
           : "fresh";
   return { ms, state };
@@ -51,6 +52,11 @@ function formatPromptCacheTimer(ms: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** A cache lifetime in words: `an hour`, or minutes as `5m`. */
+function formatCacheLifetime(ttlMs: number): string {
+  return ttlMs === 60 * 60_000 ? "an hour" : formatPromptCacheTimer(ttlMs);
 }
 
 function PromptCacheTimerLabel(props: {
@@ -66,7 +72,7 @@ function PromptCacheTimerLabel(props: {
       ? `Prompt cache last refreshed ${text}`
       : timer.state === "expired"
         ? `Prompt cache last refreshed ${text} and expired: the next message writes it again`
-        : `Prompt cache last refreshed ${text}; it expires an hour after the last request`;
+        : `Prompt cache last refreshed ${text}; it expires ${formatCacheLifetime(props.ttlMs)} after the last request`;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -92,15 +98,28 @@ function PromptCacheTimerLabel(props: {
   );
 }
 
+/** The thread's last cache miss noted by this app: how long ago and how much was sent again. */
+function PromptCacheMissLabel(props: { readonly miss: PromptCacheMiss }) {
+  const nowMinute = useNowMinute();
+  const ms = Math.max(0, Date.parse(`${nowMinute}:00Z`) - Date.parse(props.miss.at));
+  return (
+    <div className="truncate text-2xs text-destructive tabular-nums">
+      Cache miss {formatPromptCacheTimer(ms)} ago: {formatContextWindowTokens(props.miss.tokens)}{" "}
+      sent uncached
+    </div>
+  );
+}
+
 /**
  * Context use for the thread details panel; upstream's 20% and 10% left thresholds. With `cache`,
  * a prompt cache timer sits between the label and the token count, counting up from the last
  * refresh. A fixed TTL (`ttlMs`) colours it as the cache nears and passes expiry; `null` when the
- * TTL varies.
+ * TTL varies. `miss` adds a line for the last cache miss.
  */
 export function ThreadContextWindow(props: {
   readonly usage: ContextWindowSnapshot;
   readonly cache?: { readonly ttlMs: number | null } | undefined;
+  readonly miss?: PromptCacheMiss | null | undefined;
 }) {
   const { usedTokens, maxTokens, usedPercentage, updatedAt } = props.usage;
   const percent = Math.max(0, Math.min(100, usedPercentage ?? 0));
@@ -135,6 +154,7 @@ export function ThreadContextWindow(props: {
           />
         </div>
       )}
+      {props.miss ? <PromptCacheMissLabel miss={props.miss} /> : null}
     </div>
   );
 }
