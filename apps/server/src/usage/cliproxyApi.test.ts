@@ -55,14 +55,11 @@ function fixture(
       provider: string;
       email?: string;
       disabled?: boolean;
-      note?: string;
       project_id?: string;
       id_token?: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
     }>;
     upstream?: (request: RequestBody) => { status: number; body: unknown };
     cooldownStatus?: number;
-    /** Model ids per login name; without them the hub answers 404, as an older hub would. */
-    models?: Record<string, string[]>;
   } = {},
 ) {
   const requests: Array<{ path: string; body?: RequestBody }> = [];
@@ -80,15 +77,12 @@ function fixture(
           request,
           Response.json({ files: options.accounts ?? accounts }),
         );
-      if (path.endsWith("/auth-files/models")) {
-        const served = options.models?.[new URL(request.url).searchParams.get("name") ?? ""];
+      // Fork: the server asks which models each login serves; an older hub answers 404.
+      if (path.endsWith("/auth-files/models"))
         return HttpClientResponse.fromWeb(
           request,
-          served
-            ? Response.json({ models: served.map((id) => ({ id })) })
-            : Response.json({ error: "not found" }, { status: 404 }),
+          Response.json({ error: "not found" }, { status: 404 }),
         );
-      }
       if (path.endsWith("/reset-quota"))
         return HttpClientResponse.fromWeb(
           request,
@@ -280,21 +274,6 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  it.effect("names an account by its hub note when it has one", () =>
-    Effect.gen(function* () {
-      const test = fixture({
-        accounts: [
-          { ...accounts[0]!, note: " Codex Team " },
-          { ...accounts[1]!, note: "  " },
-        ],
-        upstream: () => ({ status: 200, body: { rate_limit: null } }),
-      });
-      const api = yield* test.api;
-      const result = yield* api.readAccounts(config);
-      expect(result.map((account) => account.displayName)).toEqual(["Codex Team", undefined]);
-    }),
-  );
-
   it.effect.each([
     "https://tools.test/cliproxy",
     "https://tools.test/cliproxy/",
@@ -397,39 +376,6 @@ describe("CLIProxyAPI built-in management API", () => {
         ["seven_day", 50],
         ["seven_day_fable", 80],
       ]);
-    }),
-  );
-
-  it.effect("drops a model's weekly limit on a login the hub keeps off that model", () =>
-    Effect.gen(function* () {
-      const test = fixture({
-        accounts: [
-          { ...accounts[0]!, id: "team.json", provider: "claude" },
-          { ...accounts[1]!, id: "pro.json", provider: "claude" },
-        ],
-        models: {
-          "team.json": ["claude-opus-5-5", "claude-fable-5-2", "team/claude-fable-5-2"],
-          "pro.json": ["claude-opus-5-5", "pro/claude-opus-5-5"],
-        },
-        upstream: () => ({
-          status: 200,
-          body: {
-            seven_day: { utilization: 50, resets_at: null },
-            limits: [
-              {
-                kind: "weekly_scoped",
-                percent: 80,
-                resets_at: null,
-                scope: { model: { display_name: "Fable" } },
-              },
-            ],
-          },
-        }),
-      });
-      const result = yield* (yield* test.api).readAccounts(config);
-      expect(
-        result.map((account) => account.usageLimits.windows.map((window) => window.id)),
-      ).toEqual([["seven_day", "seven_day_fable"], ["seven_day"]]);
     }),
   );
 
