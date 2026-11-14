@@ -109,8 +109,22 @@ const layerDesktopEnvironment = Layer.unwrap(
   }),
 );
 
+// Fork: an SSH host downloads its server from the GitHub repository this build updates from
+// (app-update.yml). Only that repository has the build's own version; upstream's default is
+// the official one.
+const sshReleaseBaseUrl = (appUpdateYml: string): string | undefined => {
+  const value = (key: string) =>
+    appUpdateYml.match(new RegExp(`^${key}:\\s*(\\S+)\\s*$`, "m"))?.[1];
+  const owner = value("owner");
+  const repo = value("repo");
+  return value("provider") === "github" && owner !== undefined && repo !== undefined
+    ? `https://github.com/${owner}/${repo}/releases/download`
+    : undefined;
+};
+
 const resolveDesktopSshCliRunner = (
   environment: DesktopEnvironment.DesktopEnvironment["Service"],
+  releaseBaseUrl: string | undefined,
 ): RemoteT3RunnerOptions => {
   const devRemoteEntryPath = Option.getOrUndefined(environment.devRemoteT3ServerEntryPath);
   if (environment.isDevelopment && devRemoteEntryPath !== undefined) {
@@ -119,14 +133,24 @@ const resolveDesktopSshCliRunner = (
       nodeEngineRange: serverPackageJson.engines.node,
     };
   }
-  return { archiveVersion: environment.appVersion };
+  return {
+    archiveVersion: environment.appVersion,
+    ...(releaseBaseUrl === undefined ? {} : { releaseBaseUrl }),
+  };
 };
 
 const layerDesktopSshEnvironment = Layer.unwrap(
   Effect.gen(function* () {
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
+    const fileSystem = yield* FileSystem.FileSystem;
+    const releaseBaseUrl = yield* fileSystem
+      .readFileString(environment.appUpdateYmlPath, "utf-8")
+      .pipe(
+        Effect.map(sshReleaseBaseUrl),
+        Effect.orElseSucceed(() => undefined),
+      );
     return DesktopSshEnvironment.layer({
-      resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment)),
+      resolveCliRunner: Effect.succeed(resolveDesktopSshCliRunner(environment, releaseBaseUrl)),
       resolveLauncherId: yield* Effect.cached(
         DesktopSshEnvironment.readOrCreateLauncherId(
           environment.path.join(environment.stateDir, "ssh-launcher-id"),
