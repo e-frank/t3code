@@ -31,6 +31,7 @@ import {
 } from "@t3tools/client-runtime/state/thread-settled";
 import {
   asLaunchingThread,
+  createInboxFinishTracker,
   createInboxReturnTracker,
   isThreadWorking,
   sortInboxThreadsByFinish,
@@ -333,6 +334,10 @@ const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
 
 const inboxReturns = createInboxReturnTracker();
+// Fork: where a thread last finished, kept while its next run works.
+const inboxFinishes = createInboxFinishTracker();
+const latestOf = (left: number | undefined, right: number | undefined) =>
+  left === undefined || right === undefined ? (left ?? right) : Math.max(left, right);
 
 type SidebarOptimisticDrop = {
   readonly key: string;
@@ -400,7 +405,10 @@ function resolveDraggedOrders(input: {
       workingShelfEnabled || input.returnToTopEnabled
         ? (workingShelfEnabled ? sortInboxThreadsByReturn : sortInboxThreadsByFinish)(
             [...others(activeThreads), applySidebarThreadDrop(thread, "active", drag.occurredAt)],
-            inboxReturns.returnedAt,
+            workingShelfEnabled
+              ? inboxReturns.returnedAt
+              : (entry) =>
+                  latestOf(inboxReturns.returnedAt(entry), inboxFinishes.finishedAt(entry)),
           ).map(threadShellKey)
         : undefined,
   };
@@ -638,6 +646,7 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const inboxObservation = inboxReturns.observe(
     workingShelfEnabled || returnToTopEnabled ? threads : null,
   );
+  inboxFinishes.observe(returnToTopEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
   const working: EnvironmentThreadShell[] = [];
@@ -696,7 +705,9 @@ function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
     : workingShelfEnabled
       ? sortInboxThreadsByReturn(active, inboxObservation.returnedAt)
       : returnToTopEnabled
-        ? sortInboxThreadsByFinish(active, inboxObservation.returnedAt)
+        ? sortInboxThreadsByFinish(active, (thread) =>
+            latestOf(inboxObservation.returnedAt(thread), inboxFinishes.finishedAt(thread)),
+          )
         : sortThreadsForSidebar(active);
   return {
     pinnedThreads:
