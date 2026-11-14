@@ -205,6 +205,16 @@ jobs:
           fi
           ls -la assets
           test -f assets/latest.yml && test -f assets/latest-linux.yml && test -f assets/latest-mac.yml
+      # The checksums an SSH host verifies its server download against, as release.yml writes
+      # them. The desktop app points that download at this repository (apps/desktop/src/main.ts).
+      - run: |
+          set -euo pipefail
+          cd assets
+          shopt -s nullglob
+          archives=(t3-*.tar.gz t3-*.zip)
+          (( ${#archives[@]} ))
+          sha256sum "${archives[@]}" > SHA256SUMS
+          cat SHA256SUMS
       - env:
           GH_TOKEN: ${{ github.token }}
         run: |
