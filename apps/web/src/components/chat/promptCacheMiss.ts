@@ -1,74 +1,40 @@
-import { useEffect, useSyncExternalStore } from "react";
+import type { OrchestrationV2ProviderTurn } from "@t3tools/contracts";
+
+type Turn = Pick<
+  OrchestrationV2ProviderTurn,
+  "providerThreadId" | "ordinal" | "completedAt" | "tokenUsage" | "turnTokenUsage"
+>;
+
+/** Smaller contexts cost little to resend. */
+const MIN_RESENT_TOKENS = 10_000;
 
 /**
- * Fork: remembers each thread's last prompt cache miss. A miss is one request, and the next
- * request's usage replaces it, so the app has to note it as it arrives. Kept for the app
- * session, for threads that were open when it happened.
+ * Fork: prompt tokens the provider thread's latest finished turn sent again although cached, or
+ * null. Uncached prompt tokens in the turn's totals beyond its context growth count as resent, at
+ * least half the previous context; a turn without totals is judged by its last request. A context
+ * under half the previous one is a new one (compaction), which starts uncached.
  */
-export interface PromptCacheMiss {
-  /** When the request's usage was reported. */
-  readonly at: string;
-  /** Prompt tokens the request did not read from cache. */
-  readonly tokens: number;
-}
-
-interface RequestUsage {
-  readonly updatedAt: string;
-  readonly inputTokens?: number | undefined;
-  readonly cachedInputTokens?: number | undefined;
-}
-
-/** Smaller prompts cost little to resend. */
-const MIN_PROMPT_TOKENS = 10_000;
-
-/**
- * Whether `usage` is a request that resent a context the previous one had cached: under half of
- * its prompt came from cache. A prompt under half the previous size is a new context instead
- * (compaction, a cleared thread), which always starts uncached.
- */
-function detectPromptCacheMiss(
-  previous: RequestUsage,
-  usage: RequestUsage,
-): PromptCacheMiss | null {
-  const prompt = usage.inputTokens;
-  if (prompt === undefined || prompt < MIN_PROMPT_TOKENS) return null;
-  if (!(Date.parse(usage.updatedAt) > Date.parse(previous.updatedAt))) return null;
-  if (prompt < (previous.inputTokens ?? 0) / 2) return null;
-  const cached = usage.cachedInputTokens ?? 0;
-  return cached < prompt / 2 ? { at: usage.updatedAt, tokens: prompt - cached } : null;
-}
-
-const lastUsage = new Map<string, RequestUsage>();
-const misses = new Map<string, PromptCacheMiss>();
-const listeners = new Set<() => void>();
-
-function subscribe(listener: () => void) {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/** Feed it the open thread's newest request usage; the first one seen only sets the baseline. */
-export function usePromptCacheMissTracker(threadKey: string | null, usage: RequestUsage | null) {
-  const updatedAt = usage?.updatedAt;
-  const inputTokens = usage?.inputTokens;
-  const cachedInputTokens = usage?.cachedInputTokens;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- notes the request in a store that outlives this component, since the next request's usage replaces it
-  useEffect(() => {
-    if (threadKey === null || updatedAt === undefined) return;
-    const current = { updatedAt, inputTokens, cachedInputTokens };
-    const previous = lastUsage.get(threadKey);
-    lastUsage.set(threadKey, current);
-    const miss = previous === undefined ? null : detectPromptCacheMiss(previous, current);
-    if (miss === null) return;
-    misses.set(threadKey, miss);
-    for (const listener of listeners) listener();
-  }, [threadKey, updatedAt, inputTokens, cachedInputTokens]);
-}
-
-export function usePromptCacheMiss(threadKey: string | null): PromptCacheMiss | null {
-  return useSyncExternalStore(subscribe, () =>
-    threadKey === null ? null : (misses.get(threadKey) ?? null),
-  );
+export function latestTurnPromptCacheMiss(
+  turns: ReadonlyArray<Turn>,
+  providerThreadId: Turn["providerThreadId"] | undefined,
+): number | null {
+  const own = turns
+    .filter((turn) => turn.providerThreadId === providerThreadId)
+    .toSorted((left, right) => left.ordinal - right.ordinal);
+  const latest = own.at(-1);
+  const usage = latest?.tokenUsage;
+  const previous = own.slice(0, -1).findLast((turn) => (turn.tokenUsage?.usedTokens ?? 0) > 0)
+    ?.tokenUsage?.usedTokens;
+  if (latest == null || latest.completedAt === null || usage == null || previous == null) {
+    return null;
+  }
+  if (usage.usedTokens < previous / 2) return null;
+  const totals = latest.turnTokenUsage;
+  const resent =
+    totals?.usageStatus === "complete"
+      ? totals.inputTokens -
+        (totals.cachedInputTokens ?? 0) -
+        Math.max(0, usage.usedTokens - previous)
+      : (usage.inputTokens ?? 0) - (usage.cachedInputTokens ?? 0);
+  return resent >= Math.max(MIN_RESENT_TOKENS, previous / 2) ? resent : null;
 }

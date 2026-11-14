@@ -5,7 +5,6 @@ import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/contex
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
 
-import type { PromptCacheMiss } from "./promptCacheMiss";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 
 /** Claude's cache lifetime while no request has reported one: an hour, as Claude Code is set up. */
@@ -98,28 +97,16 @@ function PromptCacheTimerLabel(props: {
   );
 }
 
-/** The thread's last cache miss noted by this app: how long ago and how much was sent again. */
-function PromptCacheMissLabel(props: { readonly miss: PromptCacheMiss }) {
-  const nowMinute = useNowMinute();
-  const ms = Math.max(0, Date.parse(`${nowMinute}:00Z`) - Date.parse(props.miss.at));
-  return (
-    <div className="truncate text-2xs text-destructive tabular-nums">
-      Cache miss {formatPromptCacheTimer(ms)} ago: {formatContextWindowTokens(props.miss.tokens)}{" "}
-      sent uncached
-    </div>
-  );
-}
-
 /**
  * Context use for the thread details panel; upstream's 20% and 10% left thresholds. With `cache`,
  * a prompt cache timer sits between the label and the token count, counting up from the last
  * refresh. A fixed TTL (`ttlMs`) colours it as the cache nears and passes expiry; `null` when the
- * TTL varies. `miss` adds a line for the last cache miss.
+ * TTL varies. `missTokens` adds a line when the latest turn missed the cache.
  */
 export function ThreadContextWindow(props: {
   readonly usage: ContextWindowSnapshot;
   readonly cache?: { readonly ttlMs: number | null } | undefined;
-  readonly miss?: PromptCacheMiss | null | undefined;
+  readonly missTokens?: number | null | undefined;
 }) {
   const { usedTokens, maxTokens, usedPercentage, updatedAt } = props.usage;
   const percent = Math.max(0, Math.min(100, usedPercentage ?? 0));
@@ -154,7 +141,11 @@ export function ThreadContextWindow(props: {
           />
         </div>
       )}
-      {props.miss ? <PromptCacheMissLabel miss={props.miss} /> : null}
+      {props.missTokens ? (
+        <div className="truncate text-2xs text-destructive tabular-nums">
+          Cache miss: {formatContextWindowTokens(props.missTokens)} sent again
+        </div>
+      ) : null}
     </div>
   );
 }
