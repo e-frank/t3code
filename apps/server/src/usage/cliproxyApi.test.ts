@@ -77,12 +77,6 @@ function fixture(
           request,
           Response.json({ files: options.accounts ?? accounts }),
         );
-      // Fork: the server asks which models each login serves; an older hub answers 404.
-      if (path.endsWith("/auth-files/models"))
-        return HttpClientResponse.fromWeb(
-          request,
-          Response.json({ error: "not found" }, { status: 404 }),
-        );
       if (path.endsWith("/reset-quota"))
         return HttpClientResponse.fromWeb(
           request,
