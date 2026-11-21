@@ -123,14 +123,27 @@ function AccountName(props: { readonly name: string }) {
 const FIXED_KINDS: ReadonlySet<WindowKind> = new Set(["session", "weekly"]);
 
 /**
+ * Antigravity returns multiple windows per kind (3p, submodels, main Gemini), with 3p first.
+ * Order main Gemini (`gemini-*`) ahead of submodels and 3p, matching upstream's `displayLimitWindows`.
+ */
+function accountWindows(account: UsageAccount): readonly ServerProviderUsageWindow[] {
+  if (account.driver !== "antigravity") return account.limits.windows;
+  return [...account.limits.windows].sort(
+    (left, right) =>
+      Number(!left.id.startsWith("gemini-")) - Number(!right.id.startsWith("gemini-")) ||
+      left.id
+        .replace(/-(5h|weekly|quota)$/, "")
+        .localeCompare(right.id.replace(/-(5h|weekly|quota)$/, "")),
+  );
+}
+
+/**
  * One column per window kind any account in the group reports, headed by its length ("5h"). The
  * fixed kinds stay as empty columns (`title: null`) when no account reports them.
  */
 function groupColumns(accounts: readonly UsageAccount[]) {
   return KIND_ORDER.flatMap((kind): { kind: WindowKind; title: string | null }[] => {
-    const sample = accounts
-      .flatMap((account) => account.limits.windows)
-      .find((window) => window.kind === kind);
+    const sample = accounts.flatMap(accountWindows).find((window) => window.kind === kind);
     if (!sample) return FIXED_KINDS.has(kind) ? [{ kind, title: null }] : [];
     const title = sample.windowDurationMins
       ? shortDuration(sample.windowDurationMins * 60_000)
@@ -257,7 +270,7 @@ function ProviderGroup(props: {
                   ) : (
                     <WindowCell
                       key={column.kind}
-                      window={account.limits.windows.find((window) => window.kind === column.kind)}
+                      window={accountWindows(account).find((window) => window.kind === column.kind)}
                       now={now}
                     />
                   ),
@@ -532,7 +545,7 @@ function ThreadUsageLimits(props: {
                       <CompactWindow
                         key={column.kind}
                         title={column.title}
-                        window={account.limits.windows.find(
+                        window={accountWindows(account).find(
                           (window) => window.kind === column.kind,
                         )}
                         now={now}
