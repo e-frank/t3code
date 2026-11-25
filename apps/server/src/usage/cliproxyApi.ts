@@ -44,6 +44,8 @@ const AuthFile = Schema.Struct({
   auth_index: Schema.String,
   provider: Schema.String,
   email: Schema.optional(Schema.String),
+  // Fork: the login's note in CLIProxyAPI ("Claude Team"), its readable name.
+  note: Schema.optional(Schema.String),
   disabled: Schema.optional(Schema.Boolean),
   project_id: Schema.optional(Schema.String),
   id_token: Schema.optional(
@@ -220,9 +222,10 @@ interface HubProvider {
 
 const listedIdentity = (account: AuthFile) => ({
   ...(account.email ? { email: account.email } : {}),
-  ...(account.id_token?.chatgpt_account_id?.trim()
-    ? { workspaceId: account.id_token.chatgpt_account_id.trim() }
-    : {}),
+  ...(account.note?.trim() ? { displayName: account.note.trim() } : {}),
+  // Fork: one email can hold two subscriptions (Claude Team and Pro). Without a workspace, the
+  // login file tells them apart, so they are not merged into one account.
+  workspaceId: account.id_token?.chatgpt_account_id?.trim() || account.id,
 });
 
 const credits = Effect.fn("CliproxyApi.credits")(function* (call: HubCall) {
