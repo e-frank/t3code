@@ -35,6 +35,11 @@ on:
         required: false
       AZURE_TRUSTED_SIGNING_PUBLISHER_NAME:
         required: false
+      # Fork: self-signed macOS code signing certificate (base64 PKCS#12) and its password.
+      MAC_SELF_SIGN_P12:
+        required: false
+      MAC_SELF_SIGN_PASSWORD:
+        required: false
     inputs:
       label:
         required: true
@@ -504,7 +509,10 @@ jobs:
       - name: Install Linux desktop build libraries
         if: inputs.platform == 'linux'
         shell: bash
+        # Fork: the runner's DNS at times fails for Ubuntu's package hosts (.github/scripts/fork-ubuntu-hosts.sh).
+        timeout-minutes: 10
         run: |
+          bash .github/scripts/fork-ubuntu-hosts.sh
           sudo apt-get update
           sudo apt-get install -y libsecret-1-dev pkg-config libgtk-3-0t64 libnss3 libasound2t64 libgbm1
           if ! command -v magick >/dev/null 2>&1 && ! command -v convert >/dev/null 2>&1; then
@@ -577,6 +585,38 @@ jobs:
         with:
           name: cli-linux-${{ inputs.arch }}
           path: wsl-runtime
+
+      # Fork: sign with the self-signed certificate. Trusting it for code signing makes it a
+      # valid identity for codesign and electron-builder on this throwaway runner.
+      - name: Import fork macOS signing certificate
+        if: inputs.platform == 'mac'
+        shell: bash
+        env:
+          P12: ${{ secrets.MAC_SELF_SIGN_P12 }}
+          P12_PASSWORD: ${{ secrets.MAC_SELF_SIGN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$P12" || -z "$P12_PASSWORD" ]]; then
+            echo "No fork signing certificate; the macOS build stays unsigned."
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/fork-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 16)"
+          printf '%s' "$P12" | base64 --decode > "$RUNNER_TEMP/fork-signing.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/fork-signing.p12" -k "$keychain" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -p codesigning "$keychain" | sed -n 's/.*"\(.*\)".*/\1/p' | head -n 1)"
+          security find-certificate -c "$identity" -p "$keychain" > "$RUNNER_TEMP/fork-signing.pem"
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/fork-signing.pem"
+          security find-identity -v -p codesigning "$keychain" | grep -F "\"$identity\""
+          rm -f "$RUNNER_TEMP/fork-signing.p12"
+          echo "::add-mask::$keychain_password"
+          echo "T3CODE_MAC_SELF_SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+          echo "Fork macOS signing enabled: $identity"
 
       - name: Build desktop artifact
         shell: bash
