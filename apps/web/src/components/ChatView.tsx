@@ -32,6 +32,7 @@ import {
   emptyOptimisticUserMessages,
   reconcileOptimisticUserMessages,
 } from "./chat/optimisticUserMessages";
+import { latestTurnPromptCacheMiss } from "./chat/promptCacheMiss";
 import { useTimelineRewind } from "./chat/useTimelineRewind";
 import { useThreadLifecycle } from "./chat/useThreadLifecycle";
 import { useRightPanelActions } from "./chat/useRightPanelActions";
@@ -585,6 +586,10 @@ export default function ChatView(props: ChatViewProps) {
     serverProjection?.providerTurns ?? [],
     serverProjection,
     activeProviderThread,
+  );
+  const activeThreadPromptCacheMissTokens = latestTurnPromptCacheMiss(
+    serverProjection?.providerTurns ?? [],
+    activeProviderThread?.id,
   );
   const serverVisibleTurnItems = useQuietThreadVisibleTurnItems(routeThreadDetailRef);
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
@@ -4193,6 +4198,8 @@ export default function ChatView(props: ChatViewProps) {
                     providers: providerStatuses,
                     sources: serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES,
                     contextWindow: activeContextWindow,
+                    promptCacheMissTokens: activeThreadPromptCacheMissTokens,
+                    promptCacheTtlMs: activeThreadLiveTokenUsage?.promptCacheTtlMs,
                   }}
                 />
 
